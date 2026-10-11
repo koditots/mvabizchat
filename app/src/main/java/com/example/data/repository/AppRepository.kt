@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.example.data.crypto.EncryptionManager
 import com.example.data.model.*
+import com.example.data.remote.GitHubRegistryService
+import com.example.data.remote.InviteDetails
+import com.example.data.remote.OnlineUserSearchResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -20,6 +23,7 @@ class AppRepository(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("mva_business_prefs", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(Dispatchers.IO)
+    val githubRegistry = GitHubRegistryService()
 
     // Current Google User
     private val _currentUser = MutableStateFlow(
@@ -27,6 +31,7 @@ class AppRepository(private val context: Context) {
             id = "user_me",
             name = prefs.getString("user_name", "Alex Rivera") ?: "Alex Rivera",
             email = prefs.getString("user_email", "alex.rivera@mvaglobal.com") ?: "alex.rivera@mvaglobal.com",
+            username = prefs.getString("user_username", "alex.rivera") ?: "alex.rivera",
             avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
             role = UserRole.ADMIN,
             statusMessage = prefs.getString("user_status", "Leading Enterprise Engineering 🚀") ?: "Leading Enterprise Engineering 🚀",
@@ -116,13 +121,14 @@ class AppRepository(private val context: Context) {
 
     private fun loadInitialData() {
         val members = listOf(
-            User("user_sarah", "Sarah Jenkins", "sarah.j@mvaglobal.com", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", UserRole.OWNER, "Executive Operations • Traveling", "Executive", true, "KEY-SARAH-991", "+1 555-0101"),
-            User("user_marcus", "Marcus Chen", "marcus.c@mvaglobal.com", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150", UserRole.ADMIN, "Security Audit underway 🛡️", "Infra & SecOps", true, "KEY-MARCUS-302", "+1 555-0102"),
-            User("user_elena", "Elena Rostova", "elena.r@mvaglobal.com", "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150", UserRole.MEMBER, "Reviewing Q4 Architecture Docs", "Product", true, "KEY-ELENA-711", "+1 555-0103"),
-            User("user_david", "David Kalu", "david.k@mvaglobal.com", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150", UserRole.MEMBER, "Offline until tomorrow morning", "DevOps", false, "KEY-DAVID-440", "+1 555-0104"),
-            User("user_amara", "Amara Patel", "amara.p@mvaglobal.com", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150", UserRole.MEMBER, "Client presentations in progress", "Solutions", true, "KEY-AMARA-821", "+1 555-0105")
+            User("user_sarah", "Sarah Jenkins", "sarah.j@mvaglobal.com", "sarah.jenkins", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", UserRole.OWNER, "Executive Operations • Traveling", "Executive", true, "KEY-SARAH-991", "+1 555-0101"),
+            User("user_marcus", "Marcus Chen", "marcus.c@mvaglobal.com", "marcus.chen", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150", UserRole.ADMIN, "Security Audit underway 🛡️", "Infra & SecOps", true, "KEY-MARCUS-302", "+1 555-0102"),
+            User("user_elena", "Elena Rostova", "elena.r@mvaglobal.com", "elena.rostova", "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150", UserRole.MEMBER, "Reviewing Q4 Architecture Docs", "Product", true, "KEY-ELENA-711", "+1 555-0103"),
+            User("user_david", "David Kalu", "david.k@mvaglobal.com", "david.kalu", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150", UserRole.MEMBER, "Offline until tomorrow morning", "DevOps", false, "KEY-DAVID-440", "+1 555-0104"),
+            User("user_amara", "Amara Patel", "amara.p@mvaglobal.com", "amara.patel", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150", UserRole.MEMBER, "Client presentations in progress", "Solutions", true, "KEY-AMARA-821", "+1 555-0105")
         )
         _teamMembers.value = members
+        members.forEach { githubRegistry.registerUserToGitHub(it) }
 
         val initialConversations = listOf(
             Conversation(
@@ -568,18 +574,27 @@ class AppRepository(private val context: Context) {
         addAuditLog("Business Profile", "Updated company profile & operational metadata")
     }
 
-    fun updateCurrentUser(name: String, email: String, status: String, department: String) {
+    fun updateCurrentUser(
+        name: String,
+        email: String,
+        username: String = "alex.rivera",
+        status: String = "Available",
+        department: String = "Engineering"
+    ) {
         _currentUser.value = _currentUser.value.copy(
             name = name,
             email = email,
+            username = username,
             statusMessage = status,
             department = department
         )
         prefs.edit()
             .putString("user_name", name)
             .putString("user_email", email)
+            .putString("user_username", username)
             .putString("user_status", status)
             .apply()
+        githubRegistry.registerUserToGitHub(_currentUser.value)
     }
 
     // Local Encrypted Backup Export & Restore
@@ -643,5 +658,60 @@ class AppRepository(private val context: Context) {
         _isCloudSyncing.value = false
         addAuditLog("Google Cloud Backup", "Synced 100% encrypted backup snapshot to Google Cloud storage")
         onComplete(true)
+    }
+
+    // Online GitHub Registry Lookup & Add to Chat
+    suspend fun searchOnlineUser(query: String): OnlineUserSearchResult {
+        return githubRegistry.checkUserOnline(query)
+    }
+
+    fun addOnlineUserToChat(user: User): Conversation {
+        // If team member not in list, add them
+        if (_teamMembers.value.none { it.id == user.id }) {
+            _teamMembers.value = _teamMembers.value + user
+        }
+
+        // Check if 1-on-1 conversation already exists
+        val existing = _conversations.value.firstOrNull { !it.isGroup && it.participantIds.contains(user.id) }
+        if (existing != null) {
+            return existing
+        }
+
+        val convId = "conv_${user.id}"
+        val newConv = Conversation(
+            id = convId,
+            title = user.name,
+            isGroup = false,
+            participantIds = listOf(_currentUser.value.id, user.id),
+            lastMessage = "Started secure end-to-end encrypted chat",
+            lastTimestamp = System.currentTimeMillis(),
+            unreadCount = 0,
+            avatarUrl = user.avatarUrl,
+            encryptionKeyFingerprint = EncryptionManager.generateFingerprint(convId)
+        )
+
+        _conversations.value = listOf(newConv) + _conversations.value
+
+        val initMsg = Message(
+            id = "msg_${System.currentTimeMillis()}",
+            conversationId = convId,
+            senderId = _currentUser.value.id,
+            senderName = _currentUser.value.name,
+            content = "🔒 Messages and calls with ${user.name} (@${user.username}) are end-to-end encrypted. Found in GitHub online registry.",
+            timestamp = System.currentTimeMillis(),
+            status = MessageStatus.READ
+        )
+        val m = _messages.value.toMutableMap()
+        m[convId] = listOf(initMsg)
+        _messages.value = m
+
+        addAuditLog("Online Registry Add", "Added ${user.name} (@${user.username}) to active chats via GitHub directory")
+        return newConv
+    }
+
+    fun generateInvite(targetQuery: String): InviteDetails {
+        val details = githubRegistry.generateInvite(_currentUser.value, targetQuery)
+        addAuditLog("User Invitation", "Generated invite code '${details.inviteCode}' for $targetQuery")
+        return details
     }
 }

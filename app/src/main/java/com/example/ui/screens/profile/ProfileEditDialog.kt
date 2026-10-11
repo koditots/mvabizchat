@@ -33,10 +33,11 @@ import com.example.ui.theme.*
 fun ProfileEditDialog(
     user: User,
     onDismiss: () -> Unit,
-    onSaveProfile: (name: String, email: String, status: String, department: String, avatarUrl: String, phone: String) -> Unit
+    onSaveProfile: (name: String, email: String, username: String, status: String, department: String, avatarUrl: String, phone: String) -> Unit
 ) {
     var name by remember { mutableStateOf(user.name) }
     var email by remember { mutableStateOf(user.email) }
+    var username by remember { mutableStateOf(user.username.ifEmpty { "alex.rivera" }) }
     var statusMessage by remember { mutableStateOf(user.statusMessage) }
     var department by remember { mutableStateOf(user.department) }
     var phone by remember { mutableStateOf(user.phone) }
@@ -96,7 +97,7 @@ fun ProfileEditDialog(
                     )
                     TextButton(
                         onClick = {
-                            onSaveProfile(name, email, statusMessage, department, selectedAvatar, phone)
+                            onSaveProfile(name, email, username, statusMessage, department, selectedAvatar, phone)
                             onDismiss()
                         },
                         modifier = Modifier.testTag("save_profile_button")
@@ -245,6 +246,25 @@ fun ProfileEditDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("profile_email_input"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PurplePrimary,
+                        unfocusedBorderColor = PurpleBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.removePrefix("@").trim() },
+                    label = { Text("Unique Username (GitHub Online Directory)", color = TextSecondary) },
+                    leadingIcon = { Icon(Icons.Default.AlternateEmail, contentDescription = null, tint = PurpleAccent) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_username_input"),
                     shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PurplePrimary,

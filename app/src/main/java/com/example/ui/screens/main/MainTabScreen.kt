@@ -29,6 +29,7 @@ import com.example.data.model.*
 import com.example.ui.components.*
 import com.example.ui.screens.admin.AdminDashboardScreen
 import com.example.ui.screens.auth.GoogleAuthScreen
+import com.example.ui.screens.chat.AddUserByUsernameDialog
 import com.example.ui.screens.chat.ChatDetailScreen
 import com.example.ui.screens.group.CreateGroupDialog
 import com.example.ui.screens.search.GlobalSearchScreen
@@ -66,6 +67,7 @@ fun MainTabScreen(
     val verifyingConversation by viewModel.verifyingConversation.collectAsState()
 
     var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var showAddUserDialog by remember { mutableStateOf(false) }
     var showMultiDeviceDialog by remember { mutableStateOf(false) }
     var showBackupRestoreDialog by remember { mutableStateOf(false) }
     var showGoogleAuthDialog by remember { mutableStateOf(false) }
@@ -159,6 +161,12 @@ fun MainTabScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showAddUserDialog = true },
+                        modifier = Modifier.testTag("add_user_by_username_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.PersonAdd, contentDescription = "Add Contact by Username", tint = PurpleNeonGlow)
+                    }
                     IconButton(
                         onClick = { viewModel.toggleSearch(true) },
                         modifier = Modifier.testTag("main_search_button")
@@ -288,13 +296,24 @@ fun MainTabScreen(
         },
         floatingActionButton = {
             if (currentTab == MainTab.CHATS) {
-                FloatingActionButton(
-                    onClick = { showCreateGroupDialog = true },
-                    containerColor = PurplePrimary,
-                    contentColor = Color.White,
-                    modifier = Modifier.testTag("create_group_fab")
-                ) {
-                    Icon(imageVector = Icons.Default.GroupAdd, contentDescription = "New Group")
+                Column(horizontalAlignment = Alignment.End) {
+                    SmallFloatingActionButton(
+                        onClick = { showCreateGroupDialog = true },
+                        containerColor = PurpleSurfaceVariant,
+                        contentColor = PurpleAccent,
+                        modifier = Modifier.testTag("create_group_fab")
+                    ) {
+                        Icon(imageVector = Icons.Default.GroupAdd, contentDescription = "New Group")
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ExtendedFloatingActionButton(
+                        onClick = { showAddUserDialog = true },
+                        containerColor = PurplePrimary,
+                        contentColor = Color.White,
+                        icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                        text = { Text("Add Contact", fontWeight = FontWeight.Bold) },
+                        modifier = Modifier.testTag("add_contact_fab")
+                    )
                 }
             }
         },
@@ -320,7 +339,8 @@ fun MainTabScreen(
                     MainTab.CHATS -> {
                         ChatsListContent(
                             conversations = conversations,
-                            onSelectConversation = { convId -> viewModel.openConversation(convId) }
+                            onSelectConversation = { convId -> viewModel.openConversation(convId) },
+                            onAddUserClick = { showAddUserDialog = true }
                         )
                     }
                     MainTab.STORIES -> {
@@ -382,6 +402,17 @@ fun MainTabScreen(
         )
     }
 
+    if (showAddUserDialog) {
+        AddUserByUsernameDialog(
+            repository = repository,
+            onDismiss = { showAddUserDialog = false },
+            onUserAddedToChat = { convId ->
+                showAddUserDialog = false
+                viewModel.openConversation(convId)
+            }
+        )
+    }
+
     if (showMultiDeviceDialog) {
         MultiDeviceDialog(
             devices = linkedDevices,
@@ -430,14 +461,70 @@ fun MainTabScreen(
 @Composable
 fun ChatsListContent(
     conversations: List<Conversation>,
-    onSelectConversation: (String) -> Unit
+    onSelectConversation: (String) -> Unit,
+    onAddUserClick: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp)
     ) {
-        item { Spacer(modifier = Modifier.height(8.dp)) }
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            // Quick Add via GitHub Banner
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = PurpleSurfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAddUserClick)
+                    .testTag("add_user_banner")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(PurplePrimaryDark),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PersonAddAlt1,
+                            contentDescription = null,
+                            tint = PurpleNeonGlow,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Add Contact by Username or Email",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Checks registration online in GitHub database",
+                            fontSize = 11.sp,
+                            color = PurpleAccent
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         items(conversations) { conv ->
             val timeStr = remember(conv.lastTimestamp) {

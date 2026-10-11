@@ -157,6 +157,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerGoogleAccountSwitch(name: String, email: String) {
-        repository.updateCurrentUser(name, email, "Leading Enterprise Engineering 🚀", "Engineering")
+        val derivedUsername = email.substringBefore("@")
+        repository.updateCurrentUser(
+            name = name,
+            email = email,
+            username = derivedUsername,
+            status = "Leading Enterprise Engineering 🚀",
+            department = "Engineering"
+        )
     }
 }

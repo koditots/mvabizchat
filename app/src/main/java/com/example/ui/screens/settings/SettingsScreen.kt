@@ -396,8 +396,8 @@ fun SettingsScreen(
         ProfileEditDialog(
             user = currentUser,
             onDismiss = { showProfileEditDialog = false },
-            onSaveProfile = { name, email, status, dept, avatar, phone ->
-                repository.updateCurrentUser(name, email, status, dept)
+            onSaveProfile = { name, email, username, status, dept, avatar, phone ->
+                repository.updateCurrentUser(name, email, username, status, dept)
             }
         )
     }
