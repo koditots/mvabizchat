@@ -93,17 +93,18 @@ fun AdminDashboardScreen(
         // Navigation Tabs for Admin Sections
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(
                 "TEAM" to "Members",
+                "CMS" to "Page CMS",
                 "BROADCAST" to "Broadcast",
-                "LOGS" to "Audit Logs",
+                "LOGS" to "Logs",
                 "BUSINESS" to "Business"
             ).forEach { (key, label) ->
                 val isSelected = selectedSection == key
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = if (isSelected) PurplePrimary else PurpleSurfaceVariant,
                     border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) PurpleNeonGlow else PurpleBorder),
                     modifier = Modifier
@@ -114,7 +115,7 @@ fun AdminDashboardScreen(
                     Text(
                         text = label,
                         color = if (isSelected) Color.White else TextSecondary,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -221,6 +222,14 @@ fun AdminDashboardScreen(
                             }
                         }
                     }
+                }
+            }
+            "CMS" -> {
+                Box(modifier = Modifier.weight(1f)) {
+                    PageCmsBuilderScreen(
+                        repository = repository,
+                        onClose = { selectedSection = "TEAM" }
+                    )
                 }
             }
             "BROADCAST" -> {

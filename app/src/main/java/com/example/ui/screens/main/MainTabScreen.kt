@@ -58,6 +58,7 @@ fun MainTabScreen(
     val stories by repository.stories.collectAsState()
     val currentUser by repository.currentUser.collectAsState()
     val linkedDevices by repository.linkedDevices.collectAsState()
+    val dynamicSections by repository.dynamicSections.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val isOfflineSimulated by repository.isOfflineSimulated.collectAsState()
 
@@ -339,8 +340,14 @@ fun MainTabScreen(
                     MainTab.CHATS -> {
                         ChatsListContent(
                             conversations = conversations,
+                            dynamicSections = dynamicSections,
                             onSelectConversation = { convId -> viewModel.openConversation(convId) },
-                            onAddUserClick = { showAddUserDialog = true }
+                            onAddUserClick = { showAddUserDialog = true },
+                            onProductInquire = { item ->
+                                val targetConv = conversations.firstOrNull { it.id == "conv_sarah" } ?: conversations.first()
+                                repository.sendMessage(targetConv.id, "Inquiry about ${item.title}: ${item.priceOrTag} (${item.linkUrl})")
+                                viewModel.openConversation(targetConv.id)
+                            }
                         )
                     }
                     MainTab.STORIES -> {
@@ -461,9 +468,13 @@ fun MainTabScreen(
 @Composable
 fun ChatsListContent(
     conversations: List<Conversation>,
+    dynamicSections: List<DynamicPageSection>,
     onSelectConversation: (String) -> Unit,
-    onAddUserClick: () -> Unit
+    onAddUserClick: () -> Unit,
+    onProductInquire: (DynamicSectionItem) -> Unit
 ) {
+    var homeViewMode by remember { mutableStateOf("CHATS") } // CHATS or SHOWCASE
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -523,7 +534,59 @@ fun ChatsListContent(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Sub-Tab Switcher: Chats vs Workspace Home CMS Showcase
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = homeViewMode == "CHATS",
+                    onClick = { homeViewMode = "CHATS" },
+                    label = { Text("💬 Chats (${conversations.size})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PurplePrimary,
+                        selectedLabelColor = Color.White,
+                        labelColor = TextSecondary
+                    ),
+                    modifier = Modifier.testTag("tab_filter_chats")
+                )
+                FilterChip(
+                    selected = homeViewMode == "SHOWCASE",
+                    onClick = { homeViewMode = "SHOWCASE" },
+                    label = { Text("🌐 Workspace CMS Showcase (${dynamicSections.count { it.isVisible }})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PurplePrimary,
+                        selectedLabelColor = Color.White,
+                        labelColor = TextSecondary
+                    ),
+                    modifier = Modifier.testTag("tab_filter_showcase")
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (homeViewMode == "SHOWCASE") {
+            item {
+                DynamicPageRenderer(
+                    sections = dynamicSections,
+                    onItemClick = onProductInquire
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        } else {
+            // Also show top hero or announcement banner if visible
+            val topHero = dynamicSections.firstOrNull { it.isVisible && (it.type == SectionType.HERO_BANNER || it.type == SectionType.ANNOUNCEMENT_ALERT) }
+            if (topHero != null) {
+                item {
+                    DynamicPageRenderer(
+                        sections = listOf(topHero),
+                        onItemClick = onProductInquire
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
         }
 
         items(conversations) { conv ->

@@ -9,9 +9,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,6 +138,53 @@ fun GoogleAuthScreen(
                             }
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                var authError by remember { mutableStateOf<String?>(null) }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val scope = rememberCoroutineScope()
+
+                Button(
+                    onClick = {
+                        authError = null
+                        scope.launch {
+                            val helper = com.example.data.auth.GoogleSignInHelper(context)
+                            when (val result = helper.signInWithGoogle()) {
+                                is com.example.data.auth.GoogleAuthResult.Success -> {
+                                    onSelectAccount(result.displayName ?: "Google User", result.email)
+                                    onDismiss()
+                                }
+                                is com.example.data.auth.GoogleAuthResult.Cancelled -> {
+                                    authError = "Google Credential Manager was dismissed. You can select an account below."
+                                }
+                                is com.example.data.auth.GoogleAuthResult.Error -> {
+                                    authError = result.errorMessage
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                        .testTag("google_credential_manager_signin_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sign in with Google (Credential Manager)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                }
+
+                if (authError != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = authError ?: "",
+                        fontSize = 11.sp,
+                        color = PurpleAccent,
+                        lineHeight = 15.sp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

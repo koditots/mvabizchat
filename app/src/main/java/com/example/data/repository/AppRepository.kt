@@ -106,6 +106,10 @@ class AppRepository(private val context: Context) {
     private val _activeCall = MutableStateFlow<CallSession?>(null)
     val activeCall: StateFlow<CallSession?> = _activeCall.asStateFlow()
 
+    // Dynamic Home Page & Section CMS
+    private val _dynamicSections = MutableStateFlow<List<DynamicPageSection>>(createDefaultSections())
+    val dynamicSections: StateFlow<List<DynamicPageSection>> = _dynamicSections.asStateFlow()
+
     data class NotificationEvent(
         val messageId: String,
         val conversationId: String,
@@ -713,5 +717,171 @@ class AppRepository(private val context: Context) {
         val details = githubRegistry.generateInvite(_currentUser.value, targetQuery)
         addAuditLog("User Invitation", "Generated invite code '${details.inviteCode}' for $targetQuery")
         return details
+    }
+
+    // Dynamic CMS Section Management
+    fun createDefaultSections(): List<DynamicPageSection> {
+        return listOf(
+            DynamicPageSection(
+                id = "sec_hero",
+                type = SectionType.HERO_BANNER,
+                title = "Enterprise E2EE Collaboration",
+                subtitle = "Zero-Knowledge Workspace Communications",
+                description = "Empowering cross-border teams with encrypted real-time chat, crystal-clear voice/video bridges, and decentralized identity governance.",
+                bgGradientStart = "#3B0764",
+                bgGradientEnd = "#090410",
+                mediaUrl = "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=800",
+                buttonText = "Schedule Team Bridge",
+                buttonColorHex = "#A855F7",
+                buttonLink = "https://mva.chat/bridge",
+                isVisible = true,
+                sortOrder = 0
+            ),
+            DynamicPageSection(
+                id = "sec_products",
+                type = SectionType.PRODUCT_SHOWCASE,
+                title = "Featured Enterprise Products",
+                subtitle = "Hardware & Cloud Infrastructure",
+                description = "Hardware tokens, encrypted relays, and enterprise clusters tailored for security-first teams.",
+                bgGradientStart = "#240046",
+                bgGradientEnd = "#140A24",
+                buttonText = "View Enterprise Catalog",
+                buttonColorHex = "#C084FC",
+                buttonLink = "https://mva.chat/catalog",
+                isVisible = true,
+                sortOrder = 1,
+                items = listOf(
+                    DynamicSectionItem(
+                        id = "prod_1",
+                        title = "MVA Hardware Key Pro",
+                        subtitle = "Hardware-bound authentication token",
+                        priceOrTag = "$129.00",
+                        imageUrl = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400",
+                        linkUrl = "https://mva.chat/products/key-pro",
+                        buttonText = "Inquire"
+                    ),
+                    DynamicSectionItem(
+                        id = "prod_2",
+                        title = "MVA Dedicated Cloud Vault",
+                        subtitle = "Private single-tenant encryption cluster",
+                        priceOrTag = "$499/mo",
+                        imageUrl = "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400",
+                        linkUrl = "https://mva.chat/products/cloud-vault",
+                        buttonText = "Deploy"
+                    ),
+                    DynamicSectionItem(
+                        id = "prod_3",
+                        title = "Air-Gapped Mesh Router",
+                        subtitle = "Secure local radio mesh network",
+                        priceOrTag = "$899.00",
+                        imageUrl = "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=400",
+                        linkUrl = "https://mva.chat/products/mesh-router",
+                        buttonText = "Order"
+                    )
+                )
+            ),
+            DynamicPageSection(
+                id = "sec_careers",
+                type = SectionType.JOB_CAREERS,
+                title = "We're Hiring • Enterprise Careers",
+                subtitle = "Shape the future of private communication",
+                description = "Join our distributed engineering, research, and cryptography teams worldwide.",
+                bgGradientStart = "#1E1038",
+                bgGradientEnd = "#090410",
+                buttonText = "View All Open Positions",
+                buttonColorHex = "#10B981",
+                buttonLink = "https://mva.chat/careers",
+                isVisible = true,
+                sortOrder = 2,
+                items = listOf(
+                    DynamicSectionItem(
+                        id = "job_1",
+                        title = "Lead Cryptography Architect",
+                        subtitle = "Post-quantum ratchets & key exchange",
+                        priceOrTag = "Remote • $190k - $240k",
+                        imageUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+                        linkUrl = "https://mva.chat/jobs/crypto",
+                        buttonText = "Apply Now"
+                    ),
+                    DynamicSectionItem(
+                        id = "job_2",
+                        title = "Senior Android Compose Engineer",
+                        subtitle = "Modern Kotlin UI & offline persistence",
+                        priceOrTag = "SF / Remote • $175k - $210k",
+                        imageUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400",
+                        linkUrl = "https://mva.chat/jobs/android",
+                        buttonText = "Apply Now"
+                    ),
+                    DynamicSectionItem(
+                        id = "job_3",
+                        title = "Enterprise Solutions Director",
+                        subtitle = "Client onboarding & security audits",
+                        priceOrTag = "New York • $180k - $230k",
+                        imageUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
+                        linkUrl = "https://mva.chat/jobs/solutions",
+                        buttonText = "Apply Now"
+                    )
+                )
+            ),
+            DynamicPageSection(
+                id = "sec_video",
+                type = SectionType.FEATURED_VIDEO,
+                title = "MVA Security Summit Keynote",
+                subtitle = "Zero-Trust Architecture & Multi-Device Sync",
+                description = "Watch Chief Architect Alex Rivera detail our end-to-end cryptographic protocol and real-time offline queue synchronization.",
+                bgGradientStart = "#2D124D",
+                bgGradientEnd = "#10002B",
+                mediaUrl = "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800",
+                isVideo = true,
+                buttonText = "Watch Keynote (18:42)",
+                buttonColorHex = "#A855F7",
+                buttonLink = "https://mva.chat/keynote-2026",
+                isVisible = true,
+                sortOrder = 3
+            )
+        )
+    }
+
+    fun updateSection(updated: DynamicPageSection) {
+        val list = _dynamicSections.value.map {
+            if (it.id == updated.id) updated else it
+        }
+        _dynamicSections.value = list
+        addAuditLog("CMS Section Edit", "Updated section '${updated.title}' (${updated.type.name})")
+    }
+
+    fun toggleSectionVisibility(id: String) {
+        val list = _dynamicSections.value.map {
+            if (it.id == id) it.copy(isVisible = !it.isVisible) else it
+        }
+        _dynamicSections.value = list
+        addAuditLog("CMS Visibility Toggle", "Toggled visibility for section $id")
+    }
+
+    fun moveSection(fromIndex: Int, toIndex: Int) {
+        val currentList = _dynamicSections.value.toMutableList()
+        if (fromIndex in currentList.indices && toIndex in currentList.indices) {
+            val item = currentList.removeAt(fromIndex)
+            currentList.add(toIndex, item)
+            val reordered = currentList.mapIndexed { idx, sec -> sec.copy(sortOrder = idx) }
+            _dynamicSections.value = reordered
+            addAuditLog("CMS Section Reorder", "Reordered section from $fromIndex to $toIndex")
+        }
+    }
+
+    fun addSection(newSection: DynamicPageSection) {
+        val nextOrder = _dynamicSections.value.size
+        _dynamicSections.value = _dynamicSections.value + newSection.copy(sortOrder = nextOrder)
+        addAuditLog("CMS Section Added", "Added new section '${newSection.title}' (${newSection.type.name})")
+    }
+
+    fun deleteSection(id: String) {
+        _dynamicSections.value = _dynamicSections.value.filter { it.id != id }
+        addAuditLog("CMS Section Deleted", "Deleted section $id")
+    }
+
+    fun resetSectionsToDefault() {
+        _dynamicSections.value = createDefaultSections()
+        addAuditLog("CMS Reset", "Reset all page sections to default enterprise template")
     }
 }
