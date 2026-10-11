@@ -63,6 +63,10 @@ fun MainTabScreen(
     val isOfflineSimulated by repository.isOfflineSimulated.collectAsState()
 
     val activeNotification by repository.activeNotification.collectAsState()
+    val activeUpdateNotification by repository.activeUpdateNotification.collectAsState()
+    val autoUpdateNotificationToast by repository.autoUpdateNotificationToast.collectAsState()
+    val updaterConfig by repository.updaterConfig.collectAsState()
+    val updateState by repository.updateState.collectAsState()
     val popupMessageEvent by viewModel.popupMessageEvent.collectAsState()
     val viewingStory by viewModel.viewingStory.collectAsState()
     val verifyingConversation by viewModel.verifyingConversation.collectAsState()
@@ -72,6 +76,8 @@ fun MainTabScreen(
     var showMultiDeviceDialog by remember { mutableStateOf(false) }
     var showBackupRestoreDialog by remember { mutableStateOf(false) }
     var showGoogleAuthDialog by remember { mutableStateOf(false) }
+    var showAppUpdateDialog by remember { mutableStateOf(false) }
+    var selectedUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
 
     val isSearchActive by viewModel.isSearchActive.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -335,6 +341,21 @@ fun MainTabScreen(
                     onQuickReply = { convId, reply -> repository.sendMessage(convId, reply) }
                 )
 
+                // GitHub App Updater Banner (Push Alert & Silent Auto-Update Notification)
+                AppUpdateBanner(
+                    updateInfo = activeUpdateNotification,
+                    autoUpdateToast = autoUpdateNotificationToast,
+                    onOpenUpdateDetails = {
+                        selectedUpdateInfo = activeUpdateNotification
+                        showAppUpdateDialog = true
+                    },
+                    onDownloadApkFromGitHub = {
+                        repository.openGitHubApkDownload(activeUpdateNotification?.downloadUrl)
+                    },
+                    onDismissNotification = { repository.dismissUpdateNotification() },
+                    onDismissToast = { repository.clearAutoUpdateNotificationToast() }
+                )
+
                 // Tab Content
                 when (currentTab) {
                     MainTab.CHATS -> {
@@ -461,6 +482,22 @@ fun MainTabScreen(
         E2EEVerificationDialog(
             conversation = verifyingConversation,
             onDismiss = { viewModel.closeVerificationDialog() }
+        )
+    }
+
+    if (showAppUpdateDialog && selectedUpdateInfo != null) {
+        AppUpdateDialog(
+            updateInfo = selectedUpdateInfo!!,
+            updateState = updateState,
+            updaterConfig = updaterConfig,
+            onDismiss = { showAppUpdateDialog = false },
+            onDownloadApkFromGitHub = { url -> repository.openGitHubApkDownload(url) },
+            onStartInAppDownload = { update -> repository.startDownloadingApk(update) },
+            onApplyUpdate = { update ->
+                repository.applyInstalledUpdate(update)
+                showAppUpdateDialog = false
+            },
+            onToggleAutoUpdateBg = { repository.toggleAutoUpdateInBackground(it) }
         )
     }
 }

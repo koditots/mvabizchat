@@ -18,6 +18,7 @@ val PurpleNeonGlow = Color(0xFFD8B4FE)       // Neon text & accents
 val DarkBackground = Color(0xFF08030F)
 val DarkSurface = Color(0xFF120722)
 val DarkSurfaceElevated = Color(0xFF1E0D36)
+val DarkCardBackground = Color(0xFF1B0B2E)
 val TextPrimary = Color(0xFFF5F3FF)
 val TextSecondary = Color(0xFFC4B5FD)
 val TextMuted = Color(0xFF8B7AA8)

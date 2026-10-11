@@ -38,9 +38,17 @@ fun AdminDashboardScreen(
     val auditLogs by repository.auditLogs.collectAsState()
     val businessProfile by repository.businessProfile.collectAsState()
 
+    val updaterConfig by repository.updaterConfig.collectAsState()
+    val updateState by repository.updateState.collectAsState()
+    val currentVersionName by repository.currentVersionName.collectAsState()
+    val currentCommitSha by repository.currentCommitSha.collectAsState()
+    val recentCommits by repository.recentGitHubCommits.collectAsState()
+
     var broadcastText by remember { mutableStateOf("") }
     var broadcastSuccess by remember { mutableStateOf(false) }
-    var selectedSection by remember { mutableStateOf("TEAM") } // TEAM, BROADCAST, LOGS, BUSINESS
+    var devopsCommitInput by remember { mutableStateOf("feat: enterprise production hotfix & cloud sync update") }
+    var devopsPushSuccess by remember { mutableStateOf(false) }
+    var selectedSection by remember { mutableStateOf("TEAM") } // TEAM, CMS, DEVOPS, BROADCAST, LOGS, BUSINESS
 
     Column(
         modifier = modifier
@@ -97,7 +105,8 @@ fun AdminDashboardScreen(
         ) {
             listOf(
                 "TEAM" to "Members",
-                "CMS" to "Page CMS",
+                "CMS" to "CMS",
+                "DEVOPS" to "DevOps",
                 "BROADCAST" to "Broadcast",
                 "LOGS" to "Logs",
                 "BUSINESS" to "Business"
@@ -230,6 +239,203 @@ fun AdminDashboardScreen(
                         repository = repository,
                         onClose = { selectedSection = "TEAM" }
                     )
+                }
+            }
+            "DEVOPS" -> {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Deployment & GitHub Pipeline Status
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = PurpleSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                            modifier = Modifier.fillMaxWidth().testTag("admin_devops_card")
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CloudSync, contentDescription = null, tint = PurpleNeonGlow, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("GitHub Continuous Deployment", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                        Text("Auto-update & release distribution pipeline", fontSize = 11.sp, color = PurpleAccent)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = PurplePrimaryDark
+                                    ) {
+                                        Text(
+                                            text = currentVersionName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = PurpleNeonGlow,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.Black.copy(alpha = 0.4f),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text("Repository", fontSize = 10.sp, color = TextMuted)
+                                            Text("${updaterConfig.repoOwner}/${updaterConfig.repoName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.Black.copy(alpha = 0.4f),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text("Latest Commit", fontSize = 10.sp, color = TextMuted)
+                                            Text("#$currentCommitSha", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PurpleAccent)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Quick Actions: Direct APK Download & Check Releases
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { repository.openGitHubApkDownload() },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary),
+                                        modifier = Modifier.weight(1f).height(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Download APK", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { repository.checkForUpdates(silent = false) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PurpleNeonGlow),
+                                        modifier = Modifier.weight(1f).height(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Check GitHub", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Push Deployment to GitHub Simulator Card
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = PurpleSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Publish, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Push Changes to GitHub", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Simulates an enterprise git push. If background auto-update is enabled, users receive the update seamlessly without interruption. Otherwise, a heads-up update notification is triggered.",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedTextField(
+                                    value = devopsCommitInput,
+                                    onValueChange = {
+                                        devopsCommitInput = it
+                                        devopsPushSuccess = false
+                                    },
+                                    placeholder = { Text("Enter commit message...", fontSize = 12.sp, color = TextMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = PurpleNeonGlow,
+                                        unfocusedBorderColor = PurpleBorder
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        val msg = devopsCommitInput.ifBlank { "feat: production hotfix deployed to GitHub" }
+                                        repository.simulateGitHubPushEvent(msg)
+                                        devopsPushSuccess = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B21A8)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                                ) {
+                                    Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Push & Deploy Update", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+
+                                if (devopsPushSuccess) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = PurpleE2EEGreen, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Push deployed to GitHub! Updater triggered across all clients.", fontSize = 11.sp, color = PurpleE2EEGreen)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Background Auto-Update Global Policy
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = PurpleSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.AutoMode, contentDescription = null, tint = PurpleNeonGlow, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text("Automatic Background Updates", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = TextPrimary)
+                                        Text("Silent update without user interruption", fontSize = 11.sp, color = TextSecondary)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Switch(
+                                    checked = updaterConfig.autoUpdateInBackground,
+                                    onCheckedChange = { repository.toggleAutoUpdateInBackground(it) },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = PurplePrimary)
+                                )
+                            }
+                        }
+                    }
                 }
             }
             "BROADCAST" -> {

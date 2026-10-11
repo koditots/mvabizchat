@@ -20,8 +20,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.data.model.User
+import com.example.data.model.*
 import com.example.data.repository.AppRepository
+import com.example.ui.components.AppUpdateDialog
+import com.example.ui.components.GitHubCommitsSheet
 import com.example.ui.screens.profile.ProfileEditDialog
 import com.example.ui.screens.security.PinSetupDialog
 import com.example.ui.theme.*
@@ -44,8 +46,20 @@ fun SettingsScreen(
     val isOfflineSimulated by repository.isOfflineSimulated.collectAsState()
     val popupRepliesEnabled by repository.popupRepliesEnabled.collectAsState()
 
+    val updaterConfig by repository.updaterConfig.collectAsState()
+    val updateState by repository.updateState.collectAsState()
+    val currentVersionName by repository.currentVersionName.collectAsState()
+    val currentCommitSha by repository.currentCommitSha.collectAsState()
+    val recentCommits by repository.recentGitHubCommits.collectAsState()
+
     var showProfileEditDialog by remember { mutableStateOf(false) }
     var showPinSetupDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var selectedUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var showCommitsSheet by remember { mutableStateOf(false) }
+    var showRepoConfigDialog by remember { mutableStateOf(false) }
+    var showSimulatePushDialog by remember { mutableStateOf(false) }
+    var simulatedCommitInput by remember { mutableStateOf("feat: critical security patch & faster push notifications") }
 
     Column(
         modifier = modifier
@@ -358,6 +372,248 @@ fun SettingsScreen(
                 }
             }
 
+            // GITHUB APP UPDATER & AUTO-UPDATE
+            item {
+                Text(
+                    text = "GITHUB APP UPDATER & AUTO-UPDATE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = PurpleAccent,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = PurpleSurfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                    modifier = Modifier.fillMaxWidth().testTag("github_updater_card")
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        // Current Version & Repository Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(PurplePrimaryDark),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = PurpleNeonGlow,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Installed Version: $currentVersionName",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = TextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color.Black.copy(alpha = 0.5f)
+                                    ) {
+                                        Text(
+                                            text = "#$currentCommitSha",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PurpleAccent,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "GitHub: ${updaterConfig.repoOwner}/${updaterConfig.repoName} (${updaterConfig.branch})",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+
+                            // Status Indicator Badge
+                            when (updateState) {
+                                is UpdateState.Checking -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = PurpleNeonGlow
+                                    )
+                                }
+                                is UpdateState.UpdateAvailable -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = PurplePrimary,
+                                        modifier = Modifier.clickable {
+                                            selectedUpdateInfo = (updateState as UpdateState.UpdateAvailable).update
+                                            showUpdateDialog = true
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Update Avail!",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                else -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = PurpleE2EEGreen.copy(alpha = 0.15f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, PurpleE2EEGreen)
+                                    ) {
+                                        Text(
+                                            text = "Up to Date",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PurpleE2EEGreen,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = PurpleBorder)
+
+                        // Toggle 1: Auto-update from background without interruption
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.AutoMode, contentDescription = null, tint = PurpleNeonGlow, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(text = "Background Auto-Update", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+                                    Text(text = "Automatically update from background without interruption when pushed to GitHub", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = updaterConfig.autoUpdateInBackground,
+                                onCheckedChange = { repository.toggleAutoUpdateInBackground(it) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = PurplePrimary),
+                                modifier = Modifier.testTag("auto_update_bg_switch")
+                            )
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 10.dp), color = PurpleBorder)
+
+                        // Toggle 2: Receive notification for updates
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(text = "Push Notifications for Updates", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+                                    Text(text = "Receive drawer banner alert when changes are pushed to GitHub", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = updaterConfig.notifyOnPush,
+                                onCheckedChange = { repository.toggleNotifyOnPush(it) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = PurplePrimary),
+                                modifier = Modifier.testTag("notify_on_push_switch")
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Action Buttons Grid
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Check for Updates Now
+                                Button(
+                                    onClick = { repository.checkForUpdates(silent = false) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary),
+                                    modifier = Modifier.weight(1f).height(40.dp).testTag("check_updates_btn")
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Check Updates", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                // Download APK from GitHub
+                                Button(
+                                    onClick = { repository.openGitHubApkDownload() },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimaryDark),
+                                    modifier = Modifier.weight(1f).height(40.dp).testTag("download_apk_github_btn")
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Download APK", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // View Commits / Changelog
+                                OutlinedButton(
+                                    onClick = {
+                                        repository.loadRecentCommits()
+                                        showCommitsSheet = true
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PurpleAccent),
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("view_commits_btn")
+                                ) {
+                                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("View Commits", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                // Simulate GitHub Push Event (Testing & Demo)
+                                FilledTonalButton(
+                                    onClick = { showSimulatePushDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF2E1065),
+                                        contentColor = PurpleNeonGlow
+                                    ),
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("simulate_push_btn")
+                                ) {
+                                    Icon(Icons.Default.Publish, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Simulate Push", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Google Workspace Registration
             item {
                 Surface(
@@ -407,6 +663,82 @@ fun SettingsScreen(
             currentPin = pinCode,
             onDismiss = { showPinSetupDialog = false },
             onSavePin = { repository.updatePinCode(it) }
+        )
+    }
+
+    if (showUpdateDialog && selectedUpdateInfo != null) {
+        AppUpdateDialog(
+            updateInfo = selectedUpdateInfo!!,
+            updateState = updateState,
+            updaterConfig = updaterConfig,
+            onDismiss = { showUpdateDialog = false },
+            onDownloadApkFromGitHub = { url -> repository.openGitHubApkDownload(url) },
+            onStartInAppDownload = { update -> repository.startDownloadingApk(update) },
+            onApplyUpdate = { update ->
+                repository.applyInstalledUpdate(update)
+                showUpdateDialog = false
+            },
+            onToggleAutoUpdateBg = { repository.toggleAutoUpdateInBackground(it) }
+        )
+    }
+
+    if (showCommitsSheet) {
+        GitHubCommitsSheet(
+            commits = recentCommits,
+            currentCommitSha = currentCommitSha,
+            onDismiss = { showCommitsSheet = false },
+            onDownloadApk = { url -> repository.openGitHubApkDownload(url) },
+            onRefresh = { repository.loadRecentCommits() }
+        )
+    }
+
+    if (showSimulatePushDialog) {
+        AlertDialog(
+            onDismissRequest = { showSimulatePushDialog = false },
+            title = {
+                Text(
+                    text = "Simulate GitHub Push",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Simulate pushing code changes to GitHub repository. Tests whether user receives an update notification or activates automatic background update seamlessly without interruption.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    OutlinedTextField(
+                        value = simulatedCommitInput,
+                        onValueChange = { simulatedCommitInput = it },
+                        label = { Text("Commit Message") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PurpleNeonGlow,
+                            unfocusedBorderColor = PurpleBorder
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val msg = simulatedCommitInput.ifBlank { "feat: updated team collaboration & background sync" }
+                        repository.simulateGitHubPushEvent(msg)
+                        showSimulatePushDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
+                ) {
+                    Text("Push Commit to GitHub", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSimulatePushDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = DarkCardBackground
         )
     }
 }

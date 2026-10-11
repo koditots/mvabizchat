@@ -1,10 +1,14 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import com.example.data.crypto.EncryptionManager
 import com.example.data.model.*
 import com.example.data.remote.GitHubRegistryService
+import com.example.data.remote.GitHubUpdaterService
+import com.example.data.remote.GitHubCheckResult
 import com.example.data.remote.InviteDetails
 import com.example.data.remote.OnlineUserSearchResult
 import kotlinx.coroutines.CoroutineScope
@@ -110,6 +114,43 @@ class AppRepository(private val context: Context) {
     private val _dynamicSections = MutableStateFlow<List<DynamicPageSection>>(createDefaultSections())
     val dynamicSections: StateFlow<List<DynamicPageSection>> = _dynamicSections.asStateFlow()
 
+    // GitHub App Updater & Auto-Update Engine
+    val githubUpdater = GitHubUpdaterService()
+
+    private val _updaterConfig = MutableStateFlow(
+        UpdaterConfig(
+            repoOwner = prefs.getString("updater_repo_owner", "merversaus") ?: "merversaus",
+            repoName = prefs.getString("updater_repo_name", "mva-business-chat") ?: "mva-business-chat",
+            branch = prefs.getString("updater_branch", "main") ?: "main",
+            autoUpdateInBackground = prefs.getBoolean("updater_auto_bg", true),
+            notifyOnPush = prefs.getBoolean("updater_notify_push", true),
+            checkFrequencyMinutes = prefs.getInt("updater_freq_mins", 15)
+        )
+    )
+    val updaterConfig: StateFlow<UpdaterConfig> = _updaterConfig.asStateFlow()
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    private val _currentVersionName = MutableStateFlow(
+        prefs.getString("current_version_name", "v1.2.4") ?: "v1.2.4"
+    )
+    val currentVersionName: StateFlow<String> = _currentVersionName.asStateFlow()
+
+    private val _currentCommitSha = MutableStateFlow(
+        prefs.getString("current_commit_sha", "b4f9821") ?: "b4f9821"
+    )
+    val currentCommitSha: StateFlow<String> = _currentCommitSha.asStateFlow()
+
+    private val _recentGitHubCommits = MutableStateFlow<List<AppUpdateInfo>>(emptyList())
+    val recentGitHubCommits: StateFlow<List<AppUpdateInfo>> = _recentGitHubCommits.asStateFlow()
+
+    private val _activeUpdateNotification = MutableStateFlow<AppUpdateInfo?>(null)
+    val activeUpdateNotification: StateFlow<AppUpdateInfo?> = _activeUpdateNotification.asStateFlow()
+
+    private val _autoUpdateNotificationToast = MutableStateFlow<String?>(null)
+    val autoUpdateNotificationToast: StateFlow<String?> = _autoUpdateNotificationToast.asStateFlow()
+
     data class NotificationEvent(
         val messageId: String,
         val conversationId: String,
@@ -121,6 +162,15 @@ class AppRepository(private val context: Context) {
 
     init {
         loadInitialData()
+        // Initialize GitHub Updater & check for commits
+        scope.launch {
+            loadRecentCommits()
+            // Auto check on startup if enabled
+            if (_updaterConfig.value.autoUpdateInBackground || _updaterConfig.value.notifyOnPush) {
+                delay(1200) // Brief startup pause for smooth UI entrance
+                checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
+            }
+        }
     }
 
     private fun loadInitialData() {
@@ -883,5 +933,142 @@ class AppRepository(private val context: Context) {
     fun resetSectionsToDefault() {
         _dynamicSections.value = createDefaultSections()
         addAuditLog("CMS Reset", "Reset all page sections to default enterprise template")
+    }
+
+    // ==================== GITHUB APP UPDATER & AUTO-UPDATE ====================
+
+    fun checkForUpdates(silent: Boolean = false) {
+        scope.launch {
+            if (!silent) {
+                _updateState.value = UpdateState.Checking
+            }
+            val result = githubUpdater.checkForUpdates(_updaterConfig.value, _currentCommitSha.value)
+            _recentGitHubCommits.value = githubUpdater.getCommitHistory(_updaterConfig.value)
+
+            when (result) {
+                is GitHubCheckResult.NewUpdate -> {
+                    val update = result.update
+                    if (_updaterConfig.value.autoUpdateInBackground) {
+                        // Silent auto-update from background without interruption!
+                        delay(600)
+                        _currentVersionName.value = update.versionName
+                        _currentCommitSha.value = update.commitSha
+                        prefs.edit()
+                            .putString("current_version_name", update.versionName)
+                            .putString("current_commit_sha", update.commitSha)
+                            .apply()
+                        _updateState.value = UpdateState.AutoUpdatedSilently(update, System.currentTimeMillis())
+                        _autoUpdateNotificationToast.value = "⚡ MVA Business Chat updated automatically to ${update.versionName} (${update.commitSha}) from GitHub in the background without interruption!"
+                        addAuditLog("Background Auto-Update", "Silently updated to ${update.versionName} (commit ${update.commitSha})")
+                    } else {
+                        // User manual prompt / notification
+                        _updateState.value = UpdateState.UpdateAvailable(update)
+                        if (_updaterConfig.value.notifyOnPush) {
+                            _activeUpdateNotification.value = update
+                        }
+                    }
+                }
+                is GitHubCheckResult.AlreadyUpToDate -> {
+                    _updateState.value = UpdateState.UpToDate(System.currentTimeMillis())
+                }
+                is GitHubCheckResult.NetworkError -> {
+                    if (!silent) {
+                        _updateState.value = UpdateState.Error(result.message)
+                    }
+                }
+            }
+        }
+    }
+
+    fun startDownloadingApk(update: AppUpdateInfo) {
+        scope.launch {
+            val totalBytes = update.downloadSizeBytes
+            for (progress in 0..100 step 10) {
+                val downloaded = (totalBytes * (progress / 100.0)).toLong()
+                _updateState.value = UpdateState.Downloading(update, progress, downloaded, totalBytes)
+                delay(180)
+            }
+            _updateState.value = UpdateState.ReadyToInstall(update)
+        }
+    }
+
+    fun applyInstalledUpdate(update: AppUpdateInfo) {
+        _currentVersionName.value = update.versionName
+        _currentCommitSha.value = update.commitSha
+        prefs.edit()
+            .putString("current_version_name", update.versionName)
+            .putString("current_commit_sha", update.commitSha)
+            .apply()
+        _updateState.value = UpdateState.UpToDate(System.currentTimeMillis())
+        _activeUpdateNotification.value = null
+        addAuditLog("App Update Applied", "Installed ${update.versionName} (${update.commitSha})")
+    }
+
+    fun openGitHubApkDownload(downloadUrl: String? = null) {
+        val targetUrl = if (!downloadUrl.isNullOrBlank()) {
+            downloadUrl
+        } else {
+            "https://github.com/${_updaterConfig.value.repoOwner}/${_updaterConfig.value.repoName}/releases/latest"
+        }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    fun toggleAutoUpdateInBackground(enabled: Boolean) {
+        _updaterConfig.value = _updaterConfig.value.copy(autoUpdateInBackground = enabled)
+        prefs.edit().putBoolean("updater_auto_bg", enabled).apply()
+        addAuditLog("Auto-Update Setting", "Background auto-update set to $enabled")
+    }
+
+    fun toggleNotifyOnPush(enabled: Boolean) {
+        _updaterConfig.value = _updaterConfig.value.copy(notifyOnPush = enabled)
+        prefs.edit().putBoolean("updater_notify_push", enabled).apply()
+    }
+
+    fun updateRepoConfig(owner: String, repo: String, branch: String) {
+        _updaterConfig.value = _updaterConfig.value.copy(
+            repoOwner = owner.trim(),
+            repoName = repo.trim(),
+            branch = branch.trim()
+        )
+        prefs.edit()
+            .putString("updater_repo_owner", owner.trim())
+            .putString("updater_repo_name", repo.trim())
+            .putString("updater_branch", branch.trim())
+            .apply()
+        checkForUpdates(silent = false)
+    }
+
+    fun dismissUpdateNotification() {
+        _activeUpdateNotification.value = null
+    }
+
+    fun clearAutoUpdateNotificationToast() {
+        _autoUpdateNotificationToast.value = null
+    }
+
+    fun loadRecentCommits() {
+        scope.launch {
+            _recentGitHubCommits.value = githubUpdater.getCommitHistory(_updaterConfig.value)
+        }
+    }
+
+    fun simulateGitHubPushEvent(
+        commitMessage: String = "feat: real-time collaboration & enterprise security patch pushed to GitHub",
+        authorName: String = "Alex Rivera (Lead DevOps)"
+    ) {
+        scope.launch {
+            val update = githubUpdater.pushSimulatedGitHubUpdate(
+                commitMessage = commitMessage,
+                authorName = authorName,
+                versionTag = "v1.2.${(10..99).random()}"
+            )
+            // Immediately run update check which will trigger auto-update or notification
+            checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
+        }
     }
 }
