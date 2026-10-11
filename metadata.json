@@ -1,0 +1,6 @@
+{
+  "name": "MVA Business Chat",
+  "description": "Secure encrypted business team communication and collaboration platform with real-time chats, calls, admin controls, multi-device cloud & local sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Glow of Chat Bubble -->
+    <path
+        android:pathData="M34,34 C34,29.5 37.6,26 42.1,26 L65.9,26 C70.4,26 74,29.5 74,34 L74,54 C74,58.4 70.4,62 65.9,62 L48,62 L38,72 L38,62 C35.7,62 34,60.3 34,58 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="34"
+                android:startY="26"
+                android:endX="74"
+                android:endY="72"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#C77DFF" />
+                <item android:offset="0.5" android:color="#9D4EDD" />
+                <item android:offset="1.0" android:color="#5A189A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inner Sleek Dark Core of Bubble -->
+    <path
+        android:pathData="M37,36 C37,32.7 39.7,30 43,30 L65,30 C68.3,30 71,32.7 71,36 L71,52 C71,55.3 68.3,58 65,58 L47,58 L39,66 L39,58 C37.9,58 37,57.1 37,56 Z"
+        android:fillColor="#180B2B" />
+
+    <!-- Padlock Shackle (E2EE indicator) -->
+    <path
+        android:pathData="M49,43 C49,40.2 51.2,38 54,38 C56.8,38 59,40.2 59,43 L59,45 L49,45 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#E0AAFF"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Padlock Body -->
+    <path
+        android:pathData="M47,45 L61,45 C62.1,45 63,45.9 63,47 L63,55 C63,56.1 62.1,57 61,57 L47,57 C45.9,57 45,56.1 45,55 L45,47 C45,45.9 45.9,45 47,45 Z"
+        android:fillColor="#E0AAFF" />
+
+    <!-- Keyhole -->
+    <path
+        android:pathData="M54,49 A 1.4,1.4 0 0,0 54,51.8 L54,54"
+        android:strokeWidth="1.2"
+        android:strokeColor="#180B2B"
+        android:strokeLineCap="round"
+        android:fillColor="#180B2B" />
+
+    <!-- Business Signal / Encrypted Verified Star Badge -->
+    <path
+        android:pathData="M69,63 L72,60 L75,63 L79,61 L80,65 L84,66 L83,70 L86,73 L83,76 L84,80 L80,81 L79,85 L75,83 L72,86 L69,83 L65,85 L64,81 L60,80 L61,76 L58,73 L61,70 L60,66 L64,65 L65,61 Z"
+        android:fillColor="#7B2CBF" />
+    <path
+        android:pathData="M68,73 L71,76 L76,70"
+        android:strokeWidth="1.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
