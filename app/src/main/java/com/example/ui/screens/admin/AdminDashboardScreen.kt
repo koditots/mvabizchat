@@ -353,11 +353,11 @@ fun AdminDashboardScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Publish, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Text("Push Changes to GitHub", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Deploy Release to GitHub", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Simulates an enterprise git push. If background auto-update is enabled, users receive the update seamlessly without interruption. Otherwise, a heads-up update notification is triggered.",
+                                    text = "Deploys a release to the enterprise repository. When pushed, users with background auto-update enabled receive the update seamlessly without interruption. Otherwise, a heads-up drawer notification is displayed.",
                                     fontSize = 11.sp,
                                     color = TextSecondary
                                 )

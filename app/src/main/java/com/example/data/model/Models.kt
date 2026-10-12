@@ -77,18 +77,44 @@ data class Story(
     val viewedBy: List<String> = emptyList()
 )
 
+enum class CallStatus(val displayTitle: String) {
+    CALLING("Calling..."),
+    RINGING("Ringing..."),
+    CONNECTING("Connecting Secure Media..."),
+    CONNECTED("Connected • E2EE Encrypted"),
+    RECONNECTING("Reconnecting Stream..."),
+    ENDED("Call Ended")
+}
+
 data class CallSession(
     val id: String,
     val peerName: String,
     val peerAvatar: String = "",
     val isVideo: Boolean,
     val isOutgoing: Boolean,
+    val status: CallStatus = CallStatus.CALLING,
     val isConnected: Boolean = false,
     val isMuted: Boolean = false,
     val isVideoEnabled: Boolean = true,
     val isSpeakerOn: Boolean = false,
+    val isFrontCamera: Boolean = true,
     val durationSeconds: Int = 0,
-    val startedAt: Long = System.currentTimeMillis()
+    val startedAt: Long = System.currentTimeMillis(),
+    val codec: String = "Opus HD (48 kHz)",
+    val latencyMs: Int = 24,
+    val packetLossPct: Double = 0.0,
+    val bitrateKbps: Int = 64
+)
+
+data class CallLogEntry(
+    val id: String,
+    val peerName: String,
+    val peerAvatar: String = "",
+    val isVideo: Boolean,
+    val isOutgoing: Boolean,
+    val timestamp: Long = System.currentTimeMillis(),
+    val durationSeconds: Int = 0,
+    val status: String = "Completed"
 )
 
 data class LinkedDevice(

@@ -43,7 +43,7 @@ fun SettingsScreen(
     val isBiometricEnabled by repository.biometricEnabled.collectAsState()
     val isAppLocked by repository.isAppLocked.collectAsState()
     val pinCode by repository.pinCode.collectAsState()
-    val isOfflineSimulated by repository.isOfflineSimulated.collectAsState()
+    val isOnline by repository.isOnline.collectAsState()
     val popupRepliesEnabled by repository.popupRepliesEnabled.collectAsState()
 
     val updaterConfig by repository.updaterConfig.collectAsState()
@@ -58,8 +58,6 @@ fun SettingsScreen(
     var selectedUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var showCommitsSheet by remember { mutableStateOf(false) }
     var showRepoConfigDialog by remember { mutableStateOf(false) }
-    var showSimulatePushDialog by remember { mutableStateOf(false) }
-    var simulatedCommitInput by remember { mutableStateOf("feat: critical security patch & faster push notifications") }
 
     Column(
         modifier = modifier
@@ -274,31 +272,46 @@ fun SettingsScreen(
 
                         Divider(modifier = Modifier.padding(vertical = 12.dp), color = PurpleBorder)
 
-                        // Offline Mode Simulator Toggle
+                        // Real-time Network Connectivity Status
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(
-                                    imageVector = if (isOfflineSimulated) Icons.Default.CloudOff else Icons.Default.CloudDone,
+                                    imageVector = if (isOnline) Icons.Default.CloudDone else Icons.Default.CloudOff,
                                     contentDescription = null,
-                                    tint = if (isOfflineSimulated) Color(0xFFEF4444) else PurpleE2EEGreen,
+                                    tint = if (isOnline) PurpleE2EEGreen else Color(0xFFEF4444),
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text(text = "Offline Mode Simulation", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
-                                    Text(text = "Queues outgoing messages; auto-syncs when online", fontSize = 11.sp, color = TextSecondary)
+                                    Text(text = "Enterprise Network Connection", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+                                    Text(
+                                        text = if (isOnline) "Connected • Validated Route" else "Offline • Outgoing queue active",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
                                 }
                             }
-                            Switch(
-                                checked = isOfflineSimulated,
-                                onCheckedChange = { repository.setOfflineSimulated(it) },
-                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFFDC2626)),
-                                modifier = Modifier.testTag("offline_mode_switch")
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isOnline) PurplePrimaryDark else Color(0xFF3F1420),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isOnline) PurpleNeonGlow else Color(0xFFEF4444))
+                            ) {
+                                Text(
+                                    text = if (isOnline) "ONLINE" else "OFFLINE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOnline) PurpleNeonGlow else Color(0xFFEF4444),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -594,19 +607,19 @@ fun SettingsScreen(
                                     Text("View Commits", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
 
-                                // Simulate GitHub Push Event (Testing & Demo)
+                                // Refresh Repository Commits
                                 FilledTonalButton(
-                                    onClick = { showSimulatePushDialog = true },
+                                    onClick = { repository.loadRecentCommits() },
                                     shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.filledTonalButtonColors(
                                         containerColor = Color(0xFF2E1065),
                                         contentColor = PurpleNeonGlow
                                     ),
-                                    modifier = Modifier.weight(1f).height(38.dp).testTag("simulate_push_btn")
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("sync_repo_btn")
                                 ) {
-                                    Icon(Icons.Default.Publish, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Simulate Push", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Sync Commits", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -638,6 +651,36 @@ fun SettingsScreen(
                             Text(text = "Signed in as ${currentUser.email}", fontSize = 11.sp, color = PurpleAccent)
                         }
                         Icon(Icons.Default.SyncAlt, contentDescription = "Switch Account", tint = PurpleAccent)
+                    }
+                }
+            }
+
+            // Sign Out of Workspace
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF381018),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { repository.logout() }
+                        .testTag("logout_button")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = "Sign Out", tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Sign Out of Enterprise Account",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFFFCA5A5)
+                        )
                     }
                 }
             }
@@ -689,56 +732,6 @@ fun SettingsScreen(
             onDismiss = { showCommitsSheet = false },
             onDownloadApk = { url -> repository.openGitHubApkDownload(url) },
             onRefresh = { repository.loadRecentCommits() }
-        )
-    }
-
-    if (showSimulatePushDialog) {
-        AlertDialog(
-            onDismissRequest = { showSimulatePushDialog = false },
-            title = {
-                Text(
-                    text = "Simulate GitHub Push",
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Simulate pushing code changes to GitHub repository. Tests whether user receives an update notification or activates automatic background update seamlessly without interruption.",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                    OutlinedTextField(
-                        value = simulatedCommitInput,
-                        onValueChange = { simulatedCommitInput = it },
-                        label = { Text("Commit Message") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PurpleNeonGlow,
-                            unfocusedBorderColor = PurpleBorder
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val msg = simulatedCommitInput.ifBlank { "feat: updated team collaboration & background sync" }
-                        repository.simulateGitHubPushEvent(msg)
-                        showSimulatePushDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
-                ) {
-                    Text("Push Commit to GitHub", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSimulatePushDialog = false }) {
-                    Text("Cancel", color = TextMuted)
-                }
-            },
-            containerColor = DarkCardBackground
         )
     }
 }

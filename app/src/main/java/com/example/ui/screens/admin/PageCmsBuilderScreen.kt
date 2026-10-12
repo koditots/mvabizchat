@@ -540,11 +540,11 @@ fun AddSectionPaletteDialog(
                                     SectionType.FEATURED_VIDEO -> DynamicPageSection(
                                         id = newId,
                                         type = type,
-                                        title = "Product Demo Video",
+                                        title = "Product Overview Video",
                                         subtitle = "Watch Online",
                                         mediaUrl = "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800",
                                         isVideo = true,
-                                        buttonText = "Watch Demo"
+                                        buttonText = "Watch Video"
                                     )
                                     SectionType.HERO_BANNER -> DynamicPageSection(
                                         id = newId,

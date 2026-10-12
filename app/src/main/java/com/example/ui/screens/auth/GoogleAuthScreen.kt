@@ -33,12 +33,6 @@ fun GoogleAuthScreen(
     onDismiss: () -> Unit,
     onSelectAccount: (name: String, email: String) -> Unit
 ) {
-    val accounts = listOf(
-        Triple("Alex Rivera", "alex.rivera@mvaglobal.com", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"),
-        Triple("Alex (Enterprise Admin)", "admin.alex@mva-enterprise.org", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"),
-        Triple("Alex (Work Dev)", "alex.r@cloud-arch.io", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150")
-    )
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -68,7 +62,7 @@ fun GoogleAuthScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Registration",
+                            text = "Workspace SSO",
                             fontSize = 18.sp,
                             color = PurpleAccent
                         )
@@ -81,7 +75,7 @@ fun GoogleAuthScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Authenticate with your Google Workspace profile to enable seamless multi-device synchronization and encrypted cloud backup.",
+                    text = "Manage your active Google Workspace credentials and cloud synchronization status.",
                     fontSize = 12.sp,
                     color = TextSecondary,
                     lineHeight = 16.sp
@@ -89,53 +83,44 @@ fun GoogleAuthScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                accounts.forEach { (name, email, avatar) ->
-                    val isCurrent = email == currentEmail
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isCurrent) PurplePrimaryDark else PurpleSurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isCurrent) PurpleNeonGlow else PurpleBorder),
+                // Current Active Google Account
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = PurplePrimaryDark,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PurpleNeonGlow),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                            .clickable {
-                                onSelectAccount(name, email)
-                                onDismiss()
-                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = CircleShape,
+                            color = PurplePrimary,
+                            modifier = Modifier.size(42.dp)
                         ) {
-                            AsyncImage(
-                                model = avatar,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Current Account", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                            Text(text = currentEmail, fontSize = 12.sp, color = PurpleNeonGlow)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = PurplePrimary
+                        ) {
+                            Text(
+                                text = "Active",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
-                                Text(text = email, fontSize = 12.sp, color = if (isCurrent) PurpleNeonGlow else TextSecondary)
-                            }
-                            if (isCurrent) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = PurplePrimary
-                                ) {
-                                    Text(
-                                        text = "Active",
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
                         }
                     }
                 }

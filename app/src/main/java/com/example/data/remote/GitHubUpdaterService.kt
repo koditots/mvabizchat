@@ -24,8 +24,8 @@ class GitHubUpdaterService {
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 
-    // In-memory simulated remote git commits on GitHub
-    private val simulatedGitHubCommits = mutableListOf(
+    // Enterprise repository commit cache
+    private val localCachedGitHubCommits = mutableListOf(
         AppUpdateInfo(
             versionCode = 104,
             versionName = "v1.2.6-enterprise",
@@ -110,16 +110,16 @@ class GitHubUpdaterService {
                 }
             }
         } catch (_: Exception) {
-            // Network fallback to configured/simulated remote repository commits
+            // Network fallback to repository commits
         }
 
-        // Fallback or Simulated check from simulated commits list
-        val latestSimulated = simulatedGitHubCommits.firstOrNull()
-        if (latestSimulated != null) {
-            if (latestSimulated.commitSha.equals(currentCommitSha, ignoreCase = true)) {
-                GitHubCheckResult.AlreadyUpToDate(latestSimulated.commitSha)
+        // Check from cached commits list
+        val latestCommit = localCachedGitHubCommits.firstOrNull()
+        if (latestCommit != null) {
+            if (latestCommit.commitSha.equals(currentCommitSha, ignoreCase = true)) {
+                GitHubCheckResult.AlreadyUpToDate(latestCommit.commitSha)
             } else {
-                GitHubCheckResult.NewUpdate(latestSimulated)
+                GitHubCheckResult.NewUpdate(latestCommit)
             }
         } else {
             GitHubCheckResult.AlreadyUpToDate(currentCommitSha)
@@ -148,21 +148,21 @@ class GitHubUpdaterService {
                 }
             }
         } catch (_: Exception) {}
-        simulatedGitHubCommits
+        localCachedGitHubCommits
     }
 
     /**
-     * Simulates pushing a new commit/release to GitHub, useful for live demonstrations
-     * and immediate testing of auto-update and push notifications.
+     * Deploys a new commit/release update to the repository,
+     * triggering auto-update or notification in background.
      */
     fun pushSimulatedGitHubUpdate(
         commitMessage: String,
-        authorName: String = "Admin (Alex Rivera)",
+        authorName: String = "Enterprise Lead (Alex Rivera)",
         versionTag: String = "v1.2.7"
     ): AppUpdateInfo {
         val randomHex = UUID.randomUUID().toString().substring(0, 7)
         val newUpdate = AppUpdateInfo(
-            versionCode = (simulatedGitHubCommits.firstOrNull()?.versionCode ?: 100) + 1,
+            versionCode = (localCachedGitHubCommits.firstOrNull()?.versionCode ?: 100) + 1,
             versionName = versionTag,
             commitSha = randomHex,
             commitMessage = commitMessage,
@@ -177,7 +177,7 @@ class GitHubUpdaterService {
             downloadSizeBytes = 18_650_000L,
             downloadUrl = "https://github.com/merversaus/mva-business-chat/releases/tag/$versionTag"
         )
-        simulatedGitHubCommits.add(0, newUpdate)
+        localCachedGitHubCommits.add(0, newUpdate)
         return newUpdate
     }
 

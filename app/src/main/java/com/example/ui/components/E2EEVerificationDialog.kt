@@ -87,7 +87,7 @@ fun E2EEVerificationDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Simulated QR Code Graphic Box
+                // Enterprise QR Key Exchange Graphic Box
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color.White,

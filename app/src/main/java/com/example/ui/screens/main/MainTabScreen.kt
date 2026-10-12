@@ -60,7 +60,8 @@ fun MainTabScreen(
     val linkedDevices by repository.linkedDevices.collectAsState()
     val dynamicSections by repository.dynamicSections.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    val isOfflineSimulated by repository.isOfflineSimulated.collectAsState()
+    val isOnline by repository.isOnline.collectAsState()
+    val callLogs by repository.callLogs.collectAsState()
 
     val activeNotification by repository.activeNotification.collectAsState()
     val activeUpdateNotification by repository.activeUpdateNotification.collectAsState()
@@ -160,9 +161,9 @@ fun MainTabScreen(
                                 color = TextPrimary
                             )
                             Text(
-                                text = if (isOfflineSimulated) "Offline Mode (Queued)" else "E2EE Connected • Multi-Device",
+                                text = if (!isOnline) "Offline (Local Queue Active)" else "E2EE Connected • Multi-Device",
                                 fontSize = 10.sp,
-                                color = if (isOfflineSimulated) Color(0xFFEF4444) else PurpleE2EEGreen
+                                color = if (!isOnline) Color(0xFFEF4444) else PurpleE2EEGreen
                             )
                         }
                     }
@@ -383,10 +384,12 @@ fun MainTabScreen(
                     }
                     MainTab.CALLS -> {
                         CallsListContent(
+                            callLogs = callLogs,
                             conversations = conversations,
                             onStartCall = { title, avatar, isVideo ->
                                 repository.startCall(title, avatar, isVideo)
-                            }
+                            },
+                            onClearLogs = { repository.clearCallLogs() }
                         )
                     }
                     MainTab.ADMIN -> {
@@ -773,13 +776,18 @@ fun ChatsListContent(
 
 @Composable
 fun CallsListContent(
+    callLogs: List<CallLogEntry>,
     conversations: List<Conversation>,
-    onStartCall: (title: String, avatar: String, isVideo: Boolean) -> Unit
+    onStartCall: (title: String, avatar: String, isVideo: Boolean) -> Unit,
+    onClearLogs: () -> Unit
 ) {
+    val dateFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .testTag("calls_list_content")
     ) {
         item {
             Surface(
@@ -795,21 +803,131 @@ fun CallsListContent(
                     Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = PurpleE2EEGreen, modifier = Modifier.size(22.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "All voice and video calls are protected by cryptographic key ratchets.",
+                        text = "Real-time encrypted audio & video calls. Protected by AES-256-GCM & DTLS-SRTP key exchange.",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            Text("RECENT TEAM CALL LOGS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PurpleAccent, letterSpacing = 1.sp)
+        }
+
+        // Section 1: Real Call Logs (Recent History)
+        if (callLogs.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("RECENT CALL HISTORY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PurpleAccent, letterSpacing = 1.sp)
+                    TextButton(onClick = onClearLogs) {
+                        Text("Clear History", fontSize = 11.sp, color = TextMuted)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            items(callLogs) { log ->
+                val durationStr = if (log.durationSeconds > 0) {
+                    val m = log.durationSeconds / 60
+                    val s = log.durationSeconds % 60
+                    String.format("%02d:%02d", m, s)
+                } else {
+                    "00:00"
+                }
+                val timeFormatted = remember(log.timestamp) {
+                    val elapsed = System.currentTimeMillis() - log.timestamp
+                    if (elapsed < 60_000) "Just now"
+                    else if (elapsed < 3600_000) "${elapsed / 60_000}m ago"
+                    else dateFormat.format(Date(log.timestamp))
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = PurpleSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (log.peerAvatar.isNotBlank()) {
+                            AsyncImage(
+                                model = log.peerAvatar,
+                                contentDescription = log.peerName,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Surface(
+                                shape = CircleShape,
+                                color = PurplePrimaryDark,
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = log.peerName.take(1),
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 18.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = log.peerName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (log.isOutgoing) Icons.Default.CallMade else Icons.Default.CallReceived,
+                                    contentDescription = null,
+                                    tint = if (log.status == "Completed") PurpleE2EEGreen else Color(0xFFEF4444),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${if (log.isVideo) "Video" else "Voice"} • $durationStr • $timeFormatted",
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = { onStartCall(log.peerName, log.peerAvatar, false) }) {
+                            Icon(Icons.Default.Call, contentDescription = "Voice Call", tint = PurpleAccent)
+                        }
+                        IconButton(onClick = { onStartCall(log.peerName, log.peerAvatar, true) }) {
+                            Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = PurpleAccent)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+
+        // Section 2: Team Directory (Start Call with anyone)
+        item {
+            Text("START ENCRYPTED CALL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PurpleAccent, letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(10.dp))
         }
 
         items(conversations) { conv ->
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = PurpleSurface,
+                color = PurpleSurfaceVariant,
                 border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -834,21 +952,29 @@ fun CallsListContent(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = conv.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CallMade, contentDescription = null, tint = PurpleE2EEGreen, modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "Encrypted • Today at 10:24 AM", fontSize = 11.sp, color = TextMuted)
-                        }
+                        Text(
+                            text = if (conv.isGroup) "Secure Conference Bridge" else "Direct Peer-to-Peer E2EE",
+                            fontSize = 11.sp,
+                            color = PurpleNeonGlow
+                        )
                     }
 
-                    IconButton(onClick = { onStartCall(conv.title, conv.avatarUrl, false) }) {
+                    IconButton(
+                        onClick = { onStartCall(conv.title, conv.avatarUrl, false) },
+                        modifier = Modifier.testTag("call_voice_${conv.id}")
+                    ) {
                         Icon(Icons.Default.Call, contentDescription = "Voice Call", tint = PurpleAccent)
                     }
-                    IconButton(onClick = { onStartCall(conv.title, conv.avatarUrl, true) }) {
+                    IconButton(
+                        onClick = { onStartCall(conv.title, conv.avatarUrl, true) },
+                        modifier = Modifier.testTag("call_video_${conv.id}")
+                    ) {
                         Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = PurpleAccent)
                     }
                 }
             }
         }
+
+        item { Spacer(modifier = Modifier.height(80.dp)) }
     }
 }

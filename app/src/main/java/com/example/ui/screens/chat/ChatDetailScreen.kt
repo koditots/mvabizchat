@@ -416,7 +416,7 @@ fun ChatDetailScreen(
                                 "🎥 Walkthrough Video",
                                 MessageType.VIDEO,
                                 "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=600",
-                                "Demo_Walkthrough.mp4",
+                                "Sprint_Architecture_Walkthrough.mp4",
                                 "8.4 MB",
                                 null,
                                 null
