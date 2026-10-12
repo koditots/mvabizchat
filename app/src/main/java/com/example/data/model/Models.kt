@@ -27,8 +27,39 @@ data class User(
     val department: String = "Engineering",
     val isOnline: Boolean = true,
     val publicKey: String = "",
-    val phone: String = "+1 555-0199"
+    val phone: String = "+1 555-0199",
+    val lastActive: Long = System.currentTimeMillis()
 )
+
+data class UserPresence(
+    val email: String = "",
+    val isOnline: Boolean = false,
+    val lastActive: Long = 0L,
+    val statusMessage: String = "",
+    val displayName: String = ""
+) {
+    fun isCurrentlyOnline(thresholdMs: Long = 120_000L): Boolean {
+        if (!isOnline) return false
+        val diff = System.currentTimeMillis() - lastActive
+        return diff in 0..thresholdMs
+    }
+
+    fun formatLastActiveText(): String {
+        if (isCurrentlyOnline()) return "Online"
+        if (lastActive <= 0L) return "Offline"
+        val diff = (System.currentTimeMillis() - lastActive).coerceAtLeast(0L)
+        val minutes = diff / (60 * 1000L)
+        val hours = diff / (60 * 60 * 1000L)
+        val days = diff / (24 * 60 * 60 * 1000L)
+        return when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "${minutes}m ago"
+            hours < 24 -> "${hours}h ago"
+            days == 1L -> "yesterday"
+            else -> "${days}d ago"
+        }
+    }
+}
 
 data class Conversation(
     val id: String,

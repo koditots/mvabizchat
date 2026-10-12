@@ -32,19 +32,21 @@ import kotlinx.coroutines.delay
 fun AppLockScreen(
     correctPin: String,
     isBiometricEnabled: Boolean,
+    isBiWeeklyVerification: Boolean = false,
     onUnlocked: () -> Unit
 ) {
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var biometricSuccessMessage by remember { mutableStateOf<String?>(null) }
+    val expectedPinLength = if (correctPin.length in 4..6) correctPin.length else 4
 
     fun handleKeyPress(digit: String) {
-        if (enteredPin.length < 4) {
+        if (enteredPin.length < expectedPinLength) {
             val newPin = enteredPin + digit
             enteredPin = newPin
             errorMessage = null
 
-            if (newPin.length == 4) {
+            if (newPin.length == expectedPinLength) {
                 if (newPin == correctPin) {
                     onUnlocked()
                 } else {
@@ -114,7 +116,7 @@ fun AppLockScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             Text(
-                text = "MVA Business Chat",
+                text = if (isBiWeeklyVerification) "Owner Verification" else "MVA Business Chat",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -123,19 +125,19 @@ fun AppLockScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "App Locked • Enter 4-Digit Security PIN",
+                text = if (isBiWeeklyVerification) "2-Week Security Check • Enter Your Owner PIN" else "App Locked • Enter $expectedPinLength-Digit Security PIN",
                 fontSize = 13.sp,
-                color = TextSecondary
+                color = if (isBiWeeklyVerification) PurpleNeonGlow else TextSecondary
             )
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // 4 Pin Dots
+            // Pin Dots
             Row(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                for (i in 0 until 4) {
+                for (i in 0 until expectedPinLength) {
                     val isFilled = i < enteredPin.length
                     Box(
                         modifier = Modifier

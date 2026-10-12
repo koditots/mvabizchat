@@ -480,6 +480,24 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
+                                is UpdateState.AutoUpdatedSilently -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFF0D9488),
+                                        modifier = Modifier.clickable {
+                                            selectedUpdateInfo = (updateState as UpdateState.AutoUpdatedSilently).update
+                                            showUpdateDialog = true
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Auto-Updated!",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
                                 else -> {
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
@@ -574,16 +592,16 @@ fun SettingsScreen(
                                     Text("Check Updates", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                // Download APK from GitHub
+                                // Deploy / Push New Update to GitHub
                                 Button(
-                                    onClick = { repository.openGitHubApkDownload() },
+                                    onClick = { repository.simulateGitHubPushEvent() },
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimaryDark),
-                                    modifier = Modifier.weight(1f).height(40.dp).testTag("download_apk_github_btn")
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B21A8)),
+                                    modifier = Modifier.weight(1f).height(40.dp).testTag("push_update_btn")
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Publish, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download APK", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Deploy Update", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -591,6 +609,18 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // Download APK from GitHub
+                                Button(
+                                    onClick = { repository.openGitHubApkDownload() },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PurplePrimaryDark),
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("download_apk_github_btn")
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Download APK", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
                                 // View Commits / Changelog
                                 OutlinedButton(
                                     onClick = {
@@ -605,21 +635,6 @@ fun SettingsScreen(
                                     Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("View Commits", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
-
-                                // Refresh Repository Commits
-                                FilledTonalButton(
-                                    onClick = { repository.loadRecentCommits() },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = Color(0xFF2E1065),
-                                        contentColor = PurpleNeonGlow
-                                    ),
-                                    modifier = Modifier.weight(1f).height(38.dp).testTag("sync_repo_btn")
-                                ) {
-                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Sync Commits", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

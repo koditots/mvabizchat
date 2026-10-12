@@ -44,7 +44,9 @@ fun ChatDetailScreen(
     onSendMessage: (content: String, type: MessageType, mediaUrl: String, fileName: String, fileSize: String, replyToId: String?, replyToSnippet: String?) -> Unit,
     onStartCall: (isVideo: Boolean) -> Unit,
     onVerifySafetyNumbers: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isPeerOnline: Boolean = false,
+    presenceSubtitle: String = ""
 ) {
     BackHandler { onBack() }
 
@@ -94,6 +96,21 @@ fun ChatDetailScreen(
                                     )
                                 }
                             }
+
+                            // Real-time online indicator badge on avatar
+                            if (isPeerOnline) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .align(Alignment.BottomEnd)
+                                        .clip(CircleShape)
+                                        .background(PurpleSurface)
+                                        .padding(1.5.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF22C55E))
+                                        .testTag("chat_avatar_online_badge")
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(10.dp))
@@ -116,11 +133,46 @@ fun ChatDetailScreen(
                                     modifier = Modifier.size(13.dp)
                                 )
                             }
-                            Text(
-                                text = "End-to-end encrypted • Tap to verify",
-                                fontSize = 11.sp,
-                                color = PurpleAccent
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isPeerOnline) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF22C55E))
+                                            .testTag("chat_online_dot")
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (presenceSubtitle.isNotBlank()) presenceSubtitle else "Online",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF4ADE80),
+                                        modifier = Modifier.testTag("chat_presence_status_text")
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "• E2EE",
+                                        fontSize = 10.sp,
+                                        color = PurpleAccent
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF94A3B8))
+                                            .testTag("chat_offline_dot")
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (presenceSubtitle.isNotBlank()) presenceSubtitle else "Offline • E2EE",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        modifier = Modifier.testTag("chat_presence_status_text")
+                                    )
+                                }
+                            }
                         }
                     }
                 },

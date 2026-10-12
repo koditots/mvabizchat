@@ -13,7 +13,9 @@ import com.example.data.remote.InviteDetails
 import com.example.data.remote.OnlineUserSearchResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,14 +89,39 @@ class AppRepository(private val context: Context) {
     val auditLogs: StateFlow<List<AdminAuditLog>> = _auditLogs.asStateFlow()
 
     // Business Profile
-    private val _businessProfile = MutableStateFlow(BusinessProfile())
+    private val _businessProfile = MutableStateFlow(
+        BusinessProfile(
+            businessName = prefs.getString("business_name", "MVA Enterprise") ?: "MVA Enterprise",
+            businessPhone = prefs.getString("user_phone", "+1 800-555-0199") ?: "+1 800-555-0199"
+        )
+    )
     val businessProfile: StateFlow<BusinessProfile> = _businessProfile.asStateFlow()
+
+    // Firestore Real-Time Chat Repository
+    val firestoreChatRepo = FirestoreChatRepository(context)
+    private var firestoreConversationsJob: Job? = null
+    private val firestoreMessagesJobs = mutableMapOf<String, Job>()
+
+    // Real-Time Online Status & Presence
+    private val _usersPresence = MutableStateFlow<Map<String, UserPresence>>(emptyMap())
+    val usersPresence: StateFlow<Map<String, UserPresence>> = _usersPresence.asStateFlow()
+    private var presenceObserverJob: Job? = null
+    private var presenceHeartbeatJob: Job? = null
 
     // Security & App Lock
     private val _isAppLocked = MutableStateFlow(prefs.getBoolean("is_locked", false))
     val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
 
-    private val _pinCode = MutableStateFlow(prefs.getString("pin_code", "1234") ?: "1234")
+    private val _isPinConfigured = MutableStateFlow(prefs.getBoolean("is_pin_configured", false))
+    val isPinConfigured: StateFlow<Boolean> = _isPinConfigured.asStateFlow()
+
+    private val _isBusinessConfigured = MutableStateFlow(prefs.getBoolean("is_business_configured", false))
+    val isBusinessConfigured: StateFlow<Boolean> = _isBusinessConfigured.asStateFlow()
+
+    private val _lastPinVerifiedTimestamp = MutableStateFlow(prefs.getLong("last_pin_verified_ts", 0L))
+    val lastPinVerifiedTimestamp: StateFlow<Long> = _lastPinVerifiedTimestamp.asStateFlow()
+
+    private val _pinCode = MutableStateFlow(prefs.getString("pin_code", "") ?: "")
     val pinCode: StateFlow<String> = _pinCode.asStateFlow()
 
     private val _biometricEnabled = MutableStateFlow(prefs.getBoolean("biometric_enabled", true))
@@ -184,6 +211,7 @@ class AppRepository(private val context: Context) {
                 _isOnline.value = online
                 if (online) {
                     syncPendingMessages()
+                    checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
                 }
             }
         }
@@ -194,6 +222,14 @@ class AppRepository(private val context: Context) {
             if (_updaterConfig.value.autoUpdateInBackground || _updaterConfig.value.notifyOnPush) {
                 delay(1200) // Brief startup pause for smooth UI entrance
                 checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
+            }
+            // Periodically check for updates in background
+            while (true) {
+                val intervalMins = _updaterConfig.value.checkFrequencyMinutes.coerceAtLeast(3)
+                delay(intervalMins * 60_000L)
+                if (_isOnline.value) {
+                    checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
+                }
             }
         }
     }
@@ -209,95 +245,16 @@ class AppRepository(private val context: Context) {
         _teamMembers.value = members
         members.forEach { githubRegistry.registerUserToGitHub(it) }
 
-        val initialConversations = listOf(
-            Conversation(
-                id = "conv_exec_board",
-                title = "MVA Executive Board",
-                isGroup = true,
-                participantIds = listOf("user_me", "user_sarah", "user_marcus"),
-                lastMessage = "Encryption audit passed. Multi-device cloud sync enabled.",
-                lastTimestamp = System.currentTimeMillis() - 1000 * 60 * 5,
-                unreadCount = 2,
-                isPinned = true,
-                avatarUrl = "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=150",
-                encryptionKeyFingerprint = EncryptionManager.generateFingerprint("conv_exec_board"),
-                groupDescription = "Strategic leadership and confidential roadmap deliberations.",
-                createdBy = "Sarah Jenkins"
-            ),
-            Conversation(
-                id = "conv_sarah",
-                title = "Sarah Jenkins",
-                isGroup = false,
-                participantIds = listOf("user_me", "user_sarah"),
-                lastMessage = "Can you send the updated Q4 security export file?",
-                lastTimestamp = System.currentTimeMillis() - 1000 * 60 * 18,
-                unreadCount = 1,
-                isPinned = true,
-                avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
-                encryptionKeyFingerprint = EncryptionManager.generateFingerprint("conv_sarah")
-            ),
-            Conversation(
-                id = "conv_marcus",
-                title = "Marcus Chen",
-                isGroup = false,
-                participantIds = listOf("user_me", "user_marcus"),
-                lastMessage = "All AES-256 session keys are synchronized across Android & Web.",
-                lastTimestamp = System.currentTimeMillis() - 1000 * 60 * 45,
-                unreadCount = 0,
-                isPinned = false,
-                avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-                encryptionKeyFingerprint = EncryptionManager.generateFingerprint("conv_marcus")
-            ),
-            Conversation(
-                id = "conv_mobile_dev",
-                title = "Mobile & Cloud Architecture",
-                isGroup = true,
-                participantIds = listOf("user_me", "user_marcus", "user_elena", "user_david"),
-                lastMessage = "Offline queue auto-resumes once connection stability is restored.",
-                lastTimestamp = System.currentTimeMillis() - 1000 * 60 * 120,
-                unreadCount = 0,
-                isPinned = false,
-                avatarUrl = "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150",
-                encryptionKeyFingerprint = EncryptionManager.generateFingerprint("conv_mobile_dev"),
-                groupDescription = "Core engineers designing offline-first synchronization & E2EE pipelines.",
-                createdBy = "Alex Rivera"
-            ),
-            Conversation(
-                id = "conv_elena",
-                title = "Elena Rostova",
-                isGroup = false,
-                participantIds = listOf("user_me", "user_elena"),
-                lastMessage = "I have uploaded the product spec document to our encrypted vault.",
-                lastTimestamp = System.currentTimeMillis() - 1000 * 60 * 240,
-                unreadCount = 0,
-                isPinned = false,
-                avatarUrl = "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150",
-                encryptionKeyFingerprint = EncryptionManager.generateFingerprint("conv_elena")
-            )
-        )
-        _conversations.value = initialConversations
+        // Zero demo chats: user starts fresh and adds contacts to start real conversations
+        _conversations.value = emptyList()
+        _messages.value = emptyMap()
 
-        val msgMap = mutableMapOf<String, List<Message>>()
-        msgMap["conv_exec_board"] = listOf(
-            Message("m1", "conv_exec_board", "user_sarah", "Sarah Jenkins", "Team, remember all communications on MVA Business Chat are protected by end-to-end encryption.", System.currentTimeMillis() - 1000 * 60 * 60, MessageType.TEXT),
-            Message("m2", "conv_exec_board", "user_marcus", "Marcus Chen", "Yes, biometric app lock and device-level keys are confirmed.", System.currentTimeMillis() - 1000 * 60 * 30, MessageType.TEXT),
-            Message("m3", "conv_exec_board", "user_sarah", "Sarah Jenkins", "Encryption audit passed. Multi-device cloud sync enabled.", System.currentTimeMillis() - 1000 * 60 * 5, MessageType.TEXT)
-        )
-        msgMap["conv_sarah"] = listOf(
-            Message("ms1", "conv_sarah", "user_me", "Alex Rivera", "Hi Sarah, the new cloud sync and local backup modules are ready.", System.currentTimeMillis() - 1000 * 60 * 40, MessageType.TEXT, status = MessageStatus.READ),
-            Message("ms2", "conv_sarah", "user_sarah", "Sarah Jenkins", "Can you send the updated Q4 security export file?", System.currentTimeMillis() - 1000 * 60 * 18, MessageType.TEXT, status = MessageStatus.READ)
-        )
-        msgMap["conv_marcus"] = listOf(
-            Message("mm1", "conv_marcus", "user_marcus", "Marcus Chen", "All AES-256 session keys are synchronized across Android & Web.", System.currentTimeMillis() - 1000 * 60 * 45, MessageType.TEXT)
-        )
-        msgMap["conv_mobile_dev"] = listOf(
-            Message("md1", "conv_mobile_dev", "user_elena", "Elena Rostova", "Does the offline mode queue messages automatically when the device loses network?", System.currentTimeMillis() - 1000 * 60 * 130, MessageType.TEXT),
-            Message("md2", "conv_mobile_dev", "user_me", "Alex Rivera", "Offline queue auto-resumes once connection stability is restored.", System.currentTimeMillis() - 1000 * 60 * 120, MessageType.TEXT)
-        )
-        msgMap["conv_elena"] = listOf(
-            Message("me1", "conv_elena", "user_elena", "Elena Rostova", "I have uploaded the product spec document to our encrypted vault.", System.currentTimeMillis() - 1000 * 60 * 240, MessageType.DOCUMENT, fileName = "MVA_Architecture_Spec_v3.pdf", fileSize = "2.4 MB")
-        )
-        _messages.value = msgMap
+        // If user already authenticated from previous session, observe their real Firestore chats & presence
+        val loggedInEmail = prefs.getString("user_email", "") ?: ""
+        if (prefs.getBoolean("is_logged_in", false) && loggedInEmail.isNotBlank()) {
+            startObservingFirestoreChats(loggedInEmail)
+            startObservingPresence(loggedInEmail)
+        }
 
         _stories.value = listOf(
             Story(
@@ -396,6 +353,12 @@ class AppRepository(private val context: Context) {
         }
         _conversations.value = updatedConvList
 
+        // Real-time Firestore synchronization
+        scope.launch {
+            firestoreChatRepo.saveMessage(conversationId, newMsg)
+        }
+        updateMyPresence(isOnline = true)
+
         // If online, simulate recipient response after a short delay
         if (!currentOffline) {
             scope.launch {
@@ -489,6 +452,7 @@ class AppRepository(private val context: Context) {
     fun setAppLocked(locked: Boolean) {
         _isAppLocked.value = locked
         prefs.edit().putBoolean("is_locked", locked).apply()
+        updateMyPresence(isOnline = !locked)
     }
 
     fun updatePinCode(newPin: String) {
@@ -542,6 +506,12 @@ class AppRepository(private val context: Context) {
         val m = _messages.value.toMutableMap()
         m[newId] = listOf(initialMsg)
         _messages.value = m
+
+        // Save group conversation and initial message to Firestore
+        scope.launch {
+            firestoreChatRepo.saveConversation(newConv)
+            firestoreChatRepo.saveMessage(newId, initialMsg)
+        }
 
         addAuditLog("Create Group", "Created secure group '$title' with ${participants.size} members")
     }
@@ -705,18 +675,112 @@ class AppRepository(private val context: Context) {
     }
 
     // Production Authentication Methods
+    val TWO_WEEKS_MILLIS = 14L * 24 * 60 * 60 * 1000L
+
+    fun isBiWeeklyVerificationDue(): Boolean {
+        if (!_isPinConfigured.value) return false
+        val lastVerified = _lastPinVerifiedTimestamp.value
+        if (lastVerified == 0L) return true
+        return (System.currentTimeMillis() - lastVerified) >= TWO_WEEKS_MILLIS
+    }
+
+    fun configurePin(pin: String) {
+        _pinCode.value = pin
+        _isPinConfigured.value = true
+        val now = System.currentTimeMillis()
+        _lastPinVerifiedTimestamp.value = now
+        prefs.edit()
+            .putBoolean("is_pin_configured", true)
+            .putString("pin_code", pin)
+            .putLong("last_pin_verified_ts", now)
+            .apply()
+        addAuditLog("Security PIN Configured", "Unique security PIN created for account protection")
+        scope.launch {
+            firestoreChatRepo.saveUserProfile(
+                user = _currentUser.value,
+                businessName = _businessProfile.value.businessName,
+                pinHash = pin,
+                lastPinVerifiedTimestamp = now
+            )
+        }
+    }
+
+    fun createBusinessProfile(
+        businessName: String,
+        name: String,
+        department: String,
+        role: UserRole,
+        phone: String,
+        statusMessage: String
+    ) {
+        val updatedUser = _currentUser.value.copy(
+            name = name,
+            department = department,
+            role = role,
+            phone = phone,
+            statusMessage = statusMessage
+        )
+        _currentUser.value = updatedUser
+        val updatedProfile = BusinessProfile(
+            businessName = businessName,
+            businessPhone = phone,
+            description = "Enterprise workspace for $businessName"
+        )
+        _businessProfile.value = updatedProfile
+        _isBusinessConfigured.value = true
+        prefs.edit()
+            .putBoolean("is_business_configured", true)
+            .putString("business_name", businessName)
+            .putString("user_name", name)
+            .putString("user_department", department)
+            .putString("user_role", role.name)
+            .putString("user_phone", phone)
+            .putString("user_status", statusMessage)
+            .apply()
+        addAuditLog("Business Profile Configured", "User manually set up business workspace '$businessName'")
+        scope.launch {
+            firestoreChatRepo.saveUserProfile(
+                user = updatedUser,
+                businessName = businessName,
+                pinHash = _pinCode.value,
+                lastPinVerifiedTimestamp = _lastPinVerifiedTimestamp.value
+            )
+        }
+    }
+
+    fun unlockWithPin() {
+        _isAppLocked.value = false
+        val now = System.currentTimeMillis()
+        _lastPinVerifiedTimestamp.value = now
+        prefs.edit().putLong("last_pin_verified_ts", now).apply()
+        addAuditLog("Owner PIN Verified", "2-week or session unlock verified successfully")
+        updateMyPresence(isOnline = true)
+        scope.launch {
+            firestoreChatRepo.saveUserProfile(
+                user = _currentUser.value,
+                businessName = _businessProfile.value.businessName,
+                pinHash = _pinCode.value,
+                lastPinVerifiedTimestamp = now
+            )
+        }
+    }
+
     fun loginWithGoogle(displayName: String, email: String, photoUrl: String?) {
-        val name = displayName.ifBlank { email.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } }
+        val cleanEmail = email.trim().lowercase()
+        if (!cleanEmail.endsWith("@gmail.com")) {
+            return
+        }
+        val name = displayName.ifBlank { cleanEmail.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } }
         val avatar = photoUrl?.takeIf { it.isNotBlank() } ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
         val user = User(
             id = "user_me",
             name = name,
-            email = email,
-            username = email.substringBefore("@"),
+            email = cleanEmail,
+            username = cleanEmail.substringBefore("@"),
             avatarUrl = avatar,
-            role = UserRole.ADMIN,
-            statusMessage = "Authenticated via Google SSO • E2EE Active 🛡️",
-            department = "Executive Core",
+            role = try { UserRole.valueOf(prefs.getString("user_role", "OWNER") ?: "OWNER") } catch (_: Exception) { UserRole.OWNER },
+            statusMessage = prefs.getString("user_status", "Active • Gmail Verified 🛡️") ?: "Active • Gmail Verified 🛡️",
+            department = prefs.getString("user_department", "Executive Management") ?: "Executive Management",
             isOnline = true,
             publicKey = "MVA-KEY-RSA-4096-ALEX"
         )
@@ -732,36 +796,194 @@ class AppRepository(private val context: Context) {
             .putString("user_department", user.department)
             .putString("user_role", user.role.name)
             .apply()
-        addAuditLog("Google SSO Authentication", "User ${user.email} verified and authenticated via Credential Manager")
+
+        // Real-time Firestore synchronization
+        startObservingFirestoreChats(cleanEmail)
+        startObservingPresence(cleanEmail)
+
+        // Restore remote profile if present on Firestore
+        scope.launch {
+            try {
+                val remoteProfile = firestoreChatRepo.loadUserProfile(cleanEmail)
+                if (remoteProfile != null) {
+                    val remoteBusiness = remoteProfile["businessName"] as? String
+                    val remotePin = remoteProfile["pinHash"] as? String
+                    val remoteLastVerified = (remoteProfile["lastPinVerifiedTimestamp"] as? Number)?.toLong() ?: 0L
+                    if (!remoteBusiness.isNullOrBlank()) {
+                        _businessProfile.value = _businessProfile.value.copy(businessName = remoteBusiness)
+                        _isBusinessConfigured.value = true
+                        prefs.edit().putBoolean("is_business_configured", true).putString("business_name", remoteBusiness).apply()
+                    }
+                    if (!remotePin.isNullOrBlank()) {
+                        _pinCode.value = remotePin
+                        _isPinConfigured.value = true
+                        _lastPinVerifiedTimestamp.value = remoteLastVerified
+                        prefs.edit().putBoolean("is_pin_configured", true).putString("pin_code", remotePin).putLong("last_pin_verified_ts", remoteLastVerified).apply()
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // Check if 2-week verification is due
+            if (isBiWeeklyVerificationDue()) {
+                _isAppLocked.value = true
+            }
+        }
+
+        addAuditLog("Gmail SSO Authentication", "User $cleanEmail authenticated via Gmail")
+    }
+
+    fun startObservingFirestoreChats(userEmail: String) {
+        val cleanEmail = userEmail.trim().lowercase()
+        firestoreConversationsJob?.cancel()
+        firestoreConversationsJob = scope.launch {
+            firestoreChatRepo.observeConversations(cleanEmail).collect { remoteList ->
+                if (remoteList.isNotEmpty()) {
+                    _conversations.value = remoteList
+                    remoteList.forEach { conv ->
+                        observeConversationMessages(conv.id)
+                    }
+                }
+            }
+        }
+    }
+
+    fun observeConversationMessages(conversationId: String) {
+        if (firestoreMessagesJobs.containsKey(conversationId)) return
+        val job = scope.launch {
+            firestoreChatRepo.observeMessages(conversationId).collect { msgList ->
+                if (msgList.isNotEmpty()) {
+                    val m = _messages.value.toMutableMap()
+                    m[conversationId] = msgList
+                    _messages.value = m
+                }
+            }
+        }
+        firestoreMessagesJobs[conversationId] = job
+    }
+
+    /**
+     * Starts observing real-time presence of all users from Firestore
+     * and maintains user's 'lastActive' timestamp heartbeat.
+     */
+    fun startObservingPresence(userEmail: String) {
+        val cleanEmail = userEmail.trim().lowercase()
+        if (cleanEmail.isBlank()) return
+
+        // Update own presence immediately in Firestore
+        updateMyPresence(isOnline = true)
+
+        // Periodic presence heartbeat loop (every 30 seconds)
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = scope.launch {
+            while (isActive) {
+                if (_isLoggedIn.value && !_isAppLocked.value) {
+                    updateMyPresence(isOnline = true)
+                }
+                delay(30_000L)
+            }
+        }
+
+        // Real-time listener for all users' presence in Firestore
+        presenceObserverJob?.cancel()
+        presenceObserverJob = scope.launch {
+            firestoreChatRepo.observeAllUsersPresence().collect { presenceMap ->
+                _usersPresence.value = presenceMap
+            }
+        }
+    }
+
+    /**
+     * Updates real-time online status and 'lastActive' timestamp field in Firestore.
+     */
+    fun updateMyPresence(isOnline: Boolean, timestamp: Long = System.currentTimeMillis()) {
+        val email = _currentUser.value.email.trim().lowercase()
+        if (email.isBlank()) return
+
+        _currentUser.value = _currentUser.value.copy(
+            isOnline = isOnline,
+            lastActive = timestamp
+        )
+
+        // Optimistically update local usersPresence map for instant UI responsiveness
+        val updatedMap = _usersPresence.value.toMutableMap()
+        updatedMap[email] = UserPresence(
+            email = email,
+            isOnline = isOnline,
+            lastActive = timestamp,
+            statusMessage = _currentUser.value.statusMessage,
+            displayName = _currentUser.value.name
+        )
+        _usersPresence.value = updatedMap
+
+        scope.launch {
+            firestoreChatRepo.updateUserPresence(email, isOnline, timestamp)
+        }
+    }
+
+    /**
+     * Resolves the real-time presence of a user by email, ID, or team member match.
+     */
+    fun getUserPresence(userEmailOrId: String): UserPresence? {
+        val cleanKey = userEmailOrId.trim().lowercase()
+        // Try direct email match in Firestore presence map
+        _usersPresence.value[cleanKey]?.let { return it }
+
+        // Match against known team members or participant IDs
+        val member = _teamMembers.value.firstOrNull {
+            it.id.equals(cleanKey, ignoreCase = true) || it.email.equals(cleanKey, ignoreCase = true)
+        }
+        if (member != null) {
+            val memberEmail = member.email.trim().lowercase()
+            _usersPresence.value[memberEmail]?.let { return it }
+            return UserPresence(
+                email = member.email,
+                isOnline = member.isOnline,
+                lastActive = member.lastActive,
+                statusMessage = member.statusMessage,
+                displayName = member.name
+            )
+        }
+        return null
+    }
+
+    /**
+     * Returns a pair of (isOnline, statusSubtitle) for a given conversation.
+     */
+    fun getConversationOnlineStatus(conv: Conversation): Pair<Boolean, String> {
+        val myEmail = _currentUser.value.email.trim().lowercase()
+        val otherParticipantIds = conv.participantIds.filter {
+            !it.equals(myEmail, ignoreCase = true) && !it.equals(_currentUser.value.id, ignoreCase = true)
+        }
+
+        if (conv.isGroup) {
+            val onlineCount = otherParticipantIds.count { pId ->
+                val p = getUserPresence(pId)
+                p?.isCurrentlyOnline() == true
+            }
+            return if (onlineCount > 0) {
+                Pair(true, "$onlineCount online • End-to-end encrypted")
+            } else {
+                Pair(false, "${conv.participantIds.size} members • End-to-end encrypted")
+            }
+        } else {
+            val peerId = otherParticipantIds.firstOrNull() ?: conv.participantIds.firstOrNull() ?: ""
+            val presence = getUserPresence(peerId)
+            return if (presence != null && presence.isCurrentlyOnline()) {
+                Pair(true, "Online")
+            } else if (presence != null && presence.lastActive > 0L) {
+                Pair(false, "Last active ${presence.formatLastActiveText()}")
+            } else {
+                Pair(false, "Offline")
+            }
+        }
     }
 
     fun loginWithWorkAccount(email: String, name: String = "", department: String = "Enterprise Operations", role: UserRole = UserRole.MEMBER) {
-        val computedName = name.ifBlank { email.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } }
-        val user = User(
-            id = "user_me",
-            name = computedName,
-            email = email,
-            username = email.substringBefore("@"),
-            avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-            role = role,
-            statusMessage = "Enterprise Active • Online 🚀",
-            department = department,
-            isOnline = true,
-            publicKey = "MVA-KEY-RSA-4096-ALEX"
-        )
-        _currentUser.value = user
-        _isLoggedIn.value = true
-        prefs.edit()
-            .putBoolean("is_logged_in", true)
-            .putString("user_name", user.name)
-            .putString("user_email", user.email)
-            .putString("user_username", user.username)
-            .putString("user_avatar", user.avatarUrl)
-            .putString("user_status", user.statusMessage)
-            .putString("user_department", user.department)
-            .putString("user_role", user.role.name)
-            .apply()
-        addAuditLog("Work Account Sign-In", "User ${user.email} authenticated to enterprise workspace")
+        val cleanEmail = email.trim().lowercase()
+        if (!cleanEmail.endsWith("@gmail.com")) {
+            return
+        }
+        loginWithGoogle(name, cleanEmail, null)
     }
 
     fun registerWorkAccount(name: String, email: String, department: String, role: UserRole) {
@@ -769,6 +991,9 @@ class AppRepository(private val context: Context) {
     }
 
     fun logout() {
+        updateMyPresence(isOnline = false)
+        presenceHeartbeatJob?.cancel()
+        presenceObserverJob?.cancel()
         _isLoggedIn.value = false
         prefs.edit().putBoolean("is_logged_in", false).apply()
         addAuditLog("Session Terminated", "User session logged out from device")
@@ -954,6 +1179,12 @@ class AppRepository(private val context: Context) {
         val m = _messages.value.toMutableMap()
         m[convId] = listOf(initMsg)
         _messages.value = m
+
+        // Save new 1-on-1 conversation and message to Firestore
+        scope.launch {
+            firestoreChatRepo.saveConversation(newConv)
+            firestoreChatRepo.saveMessage(convId, initMsg)
+        }
 
         addAuditLog("Online Registry Add", "Added ${user.name} (@${user.username}) to active chats via GitHub directory")
         return newConv
@@ -1144,28 +1375,17 @@ class AppRepository(private val context: Context) {
             when (result) {
                 is GitHubCheckResult.NewUpdate -> {
                     val update = result.update
-                    if (_updaterConfig.value.autoUpdateInBackground) {
-                        // Silent auto-update from background without interruption!
-                        delay(600)
-                        _currentVersionName.value = update.versionName
-                        _currentCommitSha.value = update.commitSha
-                        prefs.edit()
-                            .putString("current_version_name", update.versionName)
-                            .putString("current_commit_sha", update.commitSha)
-                            .apply()
-                        _updateState.value = UpdateState.AutoUpdatedSilently(update, System.currentTimeMillis())
-                        _autoUpdateNotificationToast.value = "⚡ MVA Business Chat updated automatically to ${update.versionName} (${update.commitSha}) from GitHub in the background without interruption!"
-                        addAuditLog("Background Auto-Update", "Silently updated to ${update.versionName} (commit ${update.commitSha})")
-                    } else {
-                        // User manual prompt / notification
-                        _updateState.value = UpdateState.UpdateAvailable(update)
-                        if (_updaterConfig.value.notifyOnPush) {
-                            _activeUpdateNotification.value = update
-                        }
-                    }
+                    // Always set active update notification so banner is visible on screen!
+                    _activeUpdateNotification.value = update
+                    _updateState.value = UpdateState.UpdateAvailable(update)
+                    _autoUpdateNotificationToast.value = "⚡ New update ${update.versionName} (${update.commitSha}) is available! Tap banner to install."
+                    addAuditLog("Update Available", "Found update ${update.versionName} (${update.commitSha})")
                 }
                 is GitHubCheckResult.AlreadyUpToDate -> {
                     _updateState.value = UpdateState.UpToDate(System.currentTimeMillis())
+                    if (!silent) {
+                        _autoUpdateNotificationToast.value = "App is running the latest version (${_currentVersionName.value} • ${_currentCommitSha.value})"
+                    }
                 }
                 is GitHubCheckResult.NetworkError -> {
                     if (!silent) {
@@ -1197,6 +1417,7 @@ class AppRepository(private val context: Context) {
             .apply()
         _updateState.value = UpdateState.UpToDate(System.currentTimeMillis())
         _activeUpdateNotification.value = null
+        _autoUpdateNotificationToast.value = "⚡ Installed update ${update.versionName} (${update.commitSha}) successfully!"
         addAuditLog("App Update Applied", "Installed ${update.versionName} (${update.commitSha})")
     }
 
@@ -1258,13 +1479,18 @@ class AppRepository(private val context: Context) {
         authorName: String = "Alex Rivera (Lead DevOps)"
     ) {
         scope.launch {
+            val nextVersionNum = (_recentGitHubCommits.value.size + 7)
             val update = githubUpdater.pushSimulatedGitHubUpdate(
                 commitMessage = commitMessage,
                 authorName = authorName,
-                versionTag = "v1.2.${(10..99).random()}"
+                versionTag = "v1.2.$nextVersionNum"
             )
-            // Immediately run update check which will trigger auto-update or notification
-            checkForUpdates(silent = _updaterConfig.value.autoUpdateInBackground)
+            // Immediately activate the update notification so banner displays on the screen
+            _activeUpdateNotification.value = update
+            _updateState.value = UpdateState.UpdateAvailable(update)
+            _recentGitHubCommits.value = githubUpdater.getCommitHistory(_updaterConfig.value)
+            _autoUpdateNotificationToast.value = "⚡ New GitHub update deployed: ${update.versionName} (${update.commitSha})! Tap banner to install."
+            addAuditLog("GitHub Update Deployed", "Pushed ${update.versionName} (${update.commitSha}): $commitMessage")
         }
     }
 }

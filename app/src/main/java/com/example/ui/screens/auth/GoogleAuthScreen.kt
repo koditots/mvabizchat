@@ -1,5 +1,9 @@
 package com.example.ui.screens.auth
 
+import android.accounts.AccountManager
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,12 +23,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.example.data.auth.GoogleAuthResult
+import com.example.data.auth.GoogleSignInHelper
 import com.example.ui.theme.*
 
 @Composable
@@ -33,6 +40,37 @@ fun GoogleAuthScreen(
     onDismiss: () -> Unit,
     onSelectAccount: (name: String, email: String) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val helper = remember { GoogleSignInHelper(context) }
+    var authError by remember { mutableStateOf<String?>(null) }
+    var switchEmailInput by remember { mutableStateOf("") }
+
+    val accountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val extracted = helper.extractAccountFromIntentResult(result.data)
+            if (extracted != null) {
+                onSelectAccount(extracted.first, extracted.second)
+                onDismiss()
+            } else {
+                val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                if (!email.isNullOrBlank()) {
+                    val name = email.substringBefore("@")
+                        .replace(".", " ")
+                        .replace("_", " ")
+                        .split(" ")
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                        .ifBlank { "Google User" }
+                    onSelectAccount(name, email)
+                    onDismiss()
+                }
+            }
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -125,27 +163,28 @@ fun GoogleAuthScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                var authError by remember { mutableStateOf<String?>(null) }
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val scope = rememberCoroutineScope()
-
+                // Button to switch account via native picker
                 Button(
                     onClick = {
                         authError = null
-                        scope.launch {
-                            val helper = com.example.data.auth.GoogleSignInHelper(context)
-                            when (val result = helper.signInWithGoogle()) {
-                                is com.example.data.auth.GoogleAuthResult.Success -> {
-                                    onSelectAccount(result.displayName ?: "Google User", result.email)
-                                    onDismiss()
-                                }
-                                is com.example.data.auth.GoogleAuthResult.Cancelled -> {
-                                    authError = "Google Credential Manager was dismissed. You can select an account below."
-                                }
-                                is com.example.data.auth.GoogleAuthResult.Error -> {
-                                    authError = result.errorMessage
+                        try {
+                            val intent = helper.createAccountPickerIntent()
+                            accountPickerLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            scope.launch {
+                                when (val result = helper.signInWithGoogle()) {
+                                    is GoogleAuthResult.Success -> {
+                                        onSelectAccount(result.displayName ?: "Google User", result.email)
+                                        onDismiss()
+                                    }
+                                    is GoogleAuthResult.Cancelled -> {
+                                        authError = "Account selection dismissed."
+                                    }
+                                    is GoogleAuthResult.Error -> {
+                                        authError = result.errorMessage
+                                    }
                                 }
                             }
                         }
@@ -159,7 +198,45 @@ fun GoogleAuthScreen(
                 ) {
                     Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sign in with Google (Credential Manager)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                    Text("Switch Google Account", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Or switch by typing email
+                OutlinedTextField(
+                    value = switchEmailInput,
+                    onValueChange = { switchEmailInput = it },
+                    placeholder = { Text("Or enter email to switch...", fontSize = 12.sp, color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PurpleNeonGlow,
+                        unfocusedBorderColor = PurpleBorder
+                    ),
+                    singleLine = true
+                )
+
+                if (switchEmailInput.isNotBlank() && switchEmailInput.contains("@")) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val name = switchEmailInput.substringBefore("@")
+                                .replace(".", " ")
+                                .replace("_", " ")
+                                .split(" ")
+                                .filter { it.isNotBlank() }
+                                .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                                .ifBlank { "Google User" }
+                            onSelectAccount(name, switchEmailInput.trim())
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(38.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B21A8))
+                    ) {
+                        Text("Switch to ${switchEmailInput.trim()}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 if (authError != null) {

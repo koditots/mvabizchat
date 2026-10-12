@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.*
+import com.example.data.repository.AppRepository
 import com.example.ui.components.*
 import com.example.ui.screens.admin.AdminDashboardScreen
 import com.example.ui.screens.auth.GoogleAuthScreen
@@ -83,16 +84,25 @@ fun MainTabScreen(
     val isSearchActive by viewModel.isSearchActive.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchFilter by viewModel.searchFilter.collectAsState()
+    val usersPresence by repository.usersPresence.collectAsState()
 
     // If active conversation is selected, display full chat thread
     if (activeConversationId != null) {
         val conv = conversations.firstOrNull { it.id == activeConversationId }
         val currentMessages = messagesMap[activeConversationId] ?: emptyList()
         if (conv != null) {
+            val (isPeerOnline, presenceSubtitle) = remember(conv, usersPresence) {
+                repository.getConversationOnlineStatus(conv)
+            }
+            LaunchedEffect(conv.id) {
+                repository.updateMyPresence(isOnline = true)
+            }
             ChatDetailScreen(
                 conversation = conv,
                 messages = currentMessages,
                 currentUser = currentUser,
+                isPeerOnline = isPeerOnline,
+                presenceSubtitle = presenceSubtitle,
                 onBack = { viewModel.closeConversation() },
                 onSendMessage = { content, type, mediaUrl, fileName, fileSize, replyToId, replyToSnippet ->
                     repository.sendMessage(
@@ -363,6 +373,8 @@ fun MainTabScreen(
                         ChatsListContent(
                             conversations = conversations,
                             dynamicSections = dynamicSections,
+                            repository = repository,
+                            usersPresence = usersPresence,
                             onSelectConversation = { convId -> viewModel.openConversation(convId) },
                             onAddUserClick = { showAddUserDialog = true },
                             onProductInquire = { item ->
@@ -509,6 +521,8 @@ fun MainTabScreen(
 fun ChatsListContent(
     conversations: List<Conversation>,
     dynamicSections: List<DynamicPageSection>,
+    repository: AppRepository,
+    usersPresence: Map<String, UserPresence>,
     onSelectConversation: (String) -> Unit,
     onAddUserClick: () -> Unit,
     onProductInquire: (DynamicSectionItem) -> Unit
@@ -629,9 +643,73 @@ fun ChatsListContent(
             }
         }
 
+        if (conversations.isEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = PurpleSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PurpleBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp, horizontal = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = PurplePrimaryDark,
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleNeonGlow),
+                            modifier = Modifier.size(64.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ChatBubbleOutline,
+                                    contentDescription = null,
+                                    tint = PurpleNeonGlow,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No Conversations Yet",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Your account has zero demo chats. Add a team member or client to start your first secure conversation.",
+                            fontSize = 13.sp,
+                            color = TextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = onAddUserClick,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary),
+                            modifier = Modifier.testTag("start_first_chat_button")
+                        ) {
+                            Icon(Icons.Default.AddComment, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Start First Chat", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
         items(conversations) { conv ->
             val timeStr = remember(conv.lastTimestamp) {
                 SimpleDateFormat("hh:mm a", Locale.US).format(Date(conv.lastTimestamp))
+            }
+            val (isOnline, statusSubtitle) = remember(conv, usersPresence) {
+                repository.getConversationOnlineStatus(conv)
             }
 
             Surface(
@@ -693,6 +771,18 @@ fun ChatsListContent(
                                     modifier = Modifier.size(10.dp)
                                 )
                             }
+                        } else if (isOnline) {
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .clip(CircleShape)
+                                    .background(PurpleSurface)
+                                    .padding(1.5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E))
+                                    .testTag("chat_list_online_badge_${conv.id}")
+                            )
                         }
                     }
 
@@ -704,15 +794,45 @@ fun ChatsListContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = conv.title,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = conv.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (isOnline) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0x2622C55E)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF22C55E))
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "Online",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF4ADE80)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             Text(
                                 text = timeStr,
                                 fontSize = 11.sp,
